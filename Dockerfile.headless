@@ -1,0 +1,48 @@
+FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e AS builder
+
+WORKDIR /source
+
+COPY Package.swift Package.resolved ./
+COPY RepoPromptCore ./RepoPromptCore
+COPY RepoPromptHeadless ./RepoPromptHeadless
+COPY RepoPromptHeadlessTests ./RepoPromptHeadlessTests
+
+RUN swift package dump-package > /tmp/package.json \
+	&& swift package show-dependencies --format json > /tmp/dependencies.json \
+	&& swift build -c release --product repoprompt-headless \
+	&& mkdir -p /out \
+	&& cp "$(swift build -c release --show-bin-path)/repoprompt-headless" /out/repoprompt-headless
+
+FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e AS opencode
+
+ARG TARGETARCH
+ARG OPENCODE_VERSION=1.18.4
+RUN apt-get update \
+	&& apt-get install --yes --no-install-recommends ca-certificates curl \
+	&& case "$TARGETARCH" in \
+		arm64) asset="opencode-linux-arm64.tar.gz"; checksum="eba87efba3976d533a24cca0316f8ef375b5f8e797c0a95c25ee919700b7ba35" ;; \
+		amd64) asset="opencode-linux-x64-baseline.tar.gz"; checksum="4d87e414607b77fef940256021e42fbbf37b8c62b06ced76b69e26c5dcbfbabc" ;; \
+		*) echo "unsupported Docker architecture: $TARGETARCH" >&2; exit 1 ;; \
+	esac \
+	&& curl --fail --location --show-error \
+		"https://github.com/anomalyco/opencode/releases/download/v${OPENCODE_VERSION}/${asset}" \
+		--output /tmp/opencode.tar.gz \
+	&& echo "${checksum}  /tmp/opencode.tar.gz" | sha256sum --check - \
+	&& tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin opencode \
+	&& opencode --version
+
+FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e
+
+COPY --from=builder /out/repoprompt-headless /usr/local/bin/repoprompt-headless
+COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
+COPY opencode.docker.json /etc/opencode/opencode.json
+
+RUN groupadd --gid 10001 repoprompt \
+	&& useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin repoprompt \
+	&& mkdir -p /workspace \
+	&& chown repoprompt:repoprompt /workspace
+
+WORKDIR /workspace
+ENV OPENCODE_CONFIG=/etc/opencode/opencode.json
+USER repoprompt
+ENTRYPOINT ["/usr/local/bin/repoprompt-headless"]

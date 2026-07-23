@@ -1,0 +1,90 @@
+import Foundation
+
+/// Transport preference for MCP connections
+enum MCPTransportPreference: String, Codable {
+	/// Prefer UNIX socket (local IPC), fall back to TCP if needed
+	case autoPreferUnix
+	/// Use TCP/Bonjour only (requires Local Network permission)
+	case networkOnly
+	/// Use UNIX socket only (no network traffic at all)
+	case unixOnly
+}
+
+/// Shared network configuration that both the app and CLI can read/write
+struct MCPNetworkConfig: Codable {
+	/// Transport preference for MCP connections.
+	/// New in v5 - replaces forceFilesystemTransport boolean.
+	var transportPreference: MCPTransportPreference = .autoPreferUnix
+
+	// MARK: - Backward Compatibility
+
+	/// Legacy property for backward compatibility.
+	/// When true, maps to unixOnly; when false, maps to autoPreferUnix.
+	/// New code should use transportPreference directly.
+	var forceFilesystemTransport: Bool {
+		get {
+			transportPreference == .unixOnly
+		}
+		set {
+			transportPreference = newValue ? .unixOnly : .autoPreferUnix
+		}
+	}
+
+	/// Custom decoder to handle legacy config files
+	init(from decoder: Decoder) throws {
+		let container = try decoder.container(keyedBy: CodingKeys.self)
+
+		// Try to decode new transportPreference first
+		if let pref = try container.decodeIfPresent(MCPTransportPreference.self, forKey: .transportPreference) {
+			self.transportPreference = pref
+		} else if let legacy = try container.decodeIfPresent(Bool.self, forKey: .forceFilesystemTransport) {
+			// Fall back to legacy boolean
+			self.transportPreference = legacy ? .unixOnly : .autoPreferUnix
+		} else {
+			// Default
+			self.transportPreference = .autoPreferUnix
+		}
+	}
+
+	/// Custom encoder - only encode the new transportPreference
+	func encode(to encoder: Encoder) throws {
+		var container = encoder.container(keyedBy: CodingKeys.self)
+		try container.encode(transportPreference, forKey: .transportPreference)
+		// Don't encode forceFilesystemTransport - it's computed
+	}
+
+	private enum CodingKeys: String, CodingKey {
+		case transportPreference
+		case forceFilesystemTransport // For decoding only
+	}
+
+	init() {
+		self.transportPreference = .autoPreferUnix
+	}
+
+	/// Config file location in Classic Application Support
+	static var configURL: URL {
+		RepoPromptRuntimeIdentity.applicationSupportURL(["mcp-config.json"])
+	}
+
+	/// Load config from disk, returns default if file doesn't exist
+	static func load() -> MCPNetworkConfig {
+		guard let data = try? Data(contentsOf: configURL),
+			  let config = try? JSONDecoder().decode(MCPNetworkConfig.self, from: data) else {
+			return MCPNetworkConfig()
+		}
+		return config
+	}
+
+	/// Save config to disk
+	func save() throws {
+		let encoder = JSONEncoder()
+		encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+		let data = try encoder.encode(self)
+		try FileManager.default.createDirectory(
+			at: Self.configURL.deletingLastPathComponent(),
+			withIntermediateDirectories: true
+		)
+		try data.write(to: Self.configURL, options: .atomic)
+	}
+}

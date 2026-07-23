@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  swift:
+    runs-on: ubuntu-24.04
+    container: swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: swift build --product repoprompt-headless
+      - name: Test
+        run: swift test
+
+  docker-smoke:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run self-contained Docker smoke
+        run: bash Scripts/smoke_portable_oracle_docker.sh

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "opencode-go/deepseek-v4-flash",
+  "small_model": "opencode-go/deepseek-v4-flash",
+  "mcp": {
+    "repoprompt-portable": {
+      "type": "local",
+      "command": [
+        "/usr/local/bin/repoprompt-headless",
+        "--no-persist",
+        "--root",
+        "/workspace"
+      ],
+      "enabled": true,
+      "timeout": 120000
+    }
+  }
+}

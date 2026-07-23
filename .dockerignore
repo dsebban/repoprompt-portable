@@ -1,0 +1,12 @@
+*
+!.dockerignore
+!Dockerfile.headless
+!opencode.docker.json
+!Package.swift
+!Package.resolved
+!RepoPromptCore/
+!RepoPromptCore/**
+!RepoPromptHeadless/
+!RepoPromptHeadless/**
+!RepoPromptHeadlessTests/
+!RepoPromptHeadlessTests/**
