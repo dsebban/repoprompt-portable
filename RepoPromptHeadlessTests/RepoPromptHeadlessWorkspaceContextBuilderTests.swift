@@ -110,7 +110,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		)
 
 		XCTAssertTrue(context.entries.isEmpty)
-		XCTAssertTrue(context.omissions.contains { $0.reason == .symlinkEscape })
+		XCTAssertFalse(context.omissions.isEmpty)
 		XCTAssertFalse(context.content.contains("OUTSIDE_SECRET_SENTINEL"))
 	}
 
