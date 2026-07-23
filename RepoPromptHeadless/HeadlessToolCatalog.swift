@@ -479,7 +479,10 @@ public actor HeadlessToolCatalog {
 		}
 		let maximumBytes = try contextMaximumBytes(args["max_context_bytes"])
 		guard let oracleWorkflow else {
-			throw HeadlessToolError("Oracle is not configured. Set the required REPOPROMPT_ORACLE_* environment variables.", code: "oracle_not_configured")
+			throw HeadlessToolError(
+				"Oracle is not configured. Set OPENCODE_API_KEY, or set REPOPROMPT_ORACLE_ENDPOINT, REPOPROMPT_ORACLE_PRIMARY_MODEL, and REPOPROMPT_ORACLE_SECONDARY_MODEL.",
+				code: "oracle_not_configured"
+			)
 		}
 
 		let selection = await session.selectionStore.snapshot(tabID: nil)

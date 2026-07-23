@@ -145,7 +145,11 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		])
 		XCTAssertEqual(try json(unknown)["code"] as? String, "invalid_params")
 		let missing = await unconfigured.call(name: "oracle_send", arguments: ["message": .string("hello")])
-		XCTAssertEqual(try json(missing)["code"] as? String, "oracle_not_configured")
+		let missingObject = try json(missing)
+		XCTAssertEqual(missingObject["code"] as? String, "oracle_not_configured")
+		let missingMessage = missingObject["message"] as? String ?? ""
+		XCTAssertTrue(missingMessage.contains("OPENCODE_API_KEY"), missingMessage)
+		XCTAssertTrue(missingMessage.contains("REPOPROMPT_ORACLE_ENDPOINT"), missingMessage)
 
 		let provider = CatalogOracleProvider(
 			primary: .failure(.init(.timeout, message: "primary timeout")),
