@@ -1,0 +1,147 @@
+{
+  "application": {
+    "outcome": {
+      "exit_code": null
+    },
+    "scope": {
+      "valid": false
+    }
+  },
+  "decision": {
+    "action": "invalid_environment",
+    "reason": "pristine npm verification failed"
+  },
+  "p_limit": {
+    "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+    "package_lock_sha256": null,
+    "repository": "https://github.com/sindresorhus/p-limit",
+    "selected_paths": [
+      "index.js",
+      "index.d.ts",
+      "index.test-d.ts",
+      "test.js",
+      "readme.md",
+      "package.json"
+    ],
+    "source_workspace_head": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+    "tree": "21d1b1115ab955f499ca0de32b8819b936775dd9"
+  },
+  "plan": {
+    "lanes": {},
+    "phase": {
+      "status": "skipped"
+    },
+    "selection": {
+      "selected_lane": null
+    }
+  },
+  "pristine_verification": {
+    "clean_after_test": true,
+    "identity": {
+      "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+      "package_lock_sha256": null,
+      "tree": "21d1b1115ab955f499ca0de32b8819b936775dd9"
+    },
+    "outcome": {
+      "command": "docker run --rm --user 501:20 --workdir /workspace --mount type=bind,src=/var/folders/d8/vbnhwv5d79g5xdg6ddpw_n7m0000gn/T/rp-portable-quality-91d106cd-ewbltt9q/pristine,dst=/workspace sha256:9be410e06dadc1794f44aa4c0fd107a7ecb2edb5cb6bcc6a71c7888caf3cfa12 sh -lc 'npm ci --no-audit --no-fund && npm test'",
+      "duration_seconds": 0.464,
+      "exit_code": 1,
+      "stderr": "npm error code EUSAGE\nnpm error\nnpm error The `npm ci` command can only install with an existing package-lock.json or\nnpm error npm-shrinkwrap.json with lockfileVersion >= 1. Run an install with npm@5 or\nnpm error later to generate a package-lock.json file, then try again.\nnpm error\nnpm error Clean install a project\nnpm error\nnpm error Usage:\nnpm error npm ci\nnpm error\nnpm error Options:\nnpm error [--install-strategy <hoisted|nested|shallow|linked>] [--legacy-bundling]\nnpm error [--global-style] [--omit <dev|optional|peer> [--omit <dev|optional|peer> ...]]\nnpm error [--include <prod|dev|optional|peer> [--include <prod|dev|optional|peer> ...]]\nnpm error [--strict-peer-deps] [--foreground-scripts] [--ignore-scripts]\nnpm error [--allow-directory <all|none|root>] [--allow-file <all|none|root>]\nnpm error [--allow-git <all|none|root>] [--allow-remote <all|none|root>]\nnpm error [--allow-scripts <package-list> [--allow-scripts <package-list> ...]]\nnpm error [--strict-allow-scripts] [--dangerously-allow-all-scripts] [--no-audit]\nnpm error [--no-bin-links] [--no-fund] [--dry-run]\nnpm error [-w|--workspace <workspace-name> [-w|--workspace <workspace-name> ...]]\nnpm error [--workspaces] [--include-workspace-root] [--install-links]\nnpm error\nnpm error   --install-strategy\nnpm error     Sets the strategy for installing packages in node_modules.\nnpm error\nnpm error   --legacy-bundling\nnpm error     Instead of hoisting package installs in `node_modules`, install packages\nnpm error\nnpm error   --global-style\nnpm error     Only install direct dependencies in the top level `node_modules`,\nnpm error\nnpm error   --omit\nnpm error     Dependency types to omit from the installation tree on disk.\nnpm error\nnpm error   --include\nnpm error     Option that allows for defining which types of dependencies to install.\nnpm error\nnpm error   --strict-peer-deps\nnpm error     If set to `true`, and `--legacy-peer-deps` is not set, then _any_\nnpm error\nnpm error   --foreground-scripts\nnpm error     Run all build scripts (ie, `preinstall`, `install`, and\nnpm error\nnpm error   --ignore-scripts\nnpm error     If true, npm does not run scripts specified in package.json files.\nnpm error\nnpm error   --allow-directory\nnpm error     Limits the ability for npm to install dependencies from directories.\nnpm error\nnpm error   --allow-file\nnpm error     Limits the ability for npm to install dependencies from tarball files.\nnpm error\nnpm error   --allow-git\nnpm error     Limits the ability for npm to fetch dependencies from git references.\nnpm error\nnpm error   --allow-remote\nnpm error     Limits the ability for npm to fetch dependencies from urls.\nnpm error\nnpm error   --allow-scripts\nnpm error     Comma-separated list of packages whose install-time lifecycle scripts\nnpm error\nnpm error   --strict-allow-scripts\nnpm error     If `true`, turn the install-script policy from a warning into a hard\nnpm error\nnpm error   --dangerously-allow-all-scripts\nnpm error     If `true`, bypass the `allowScripts` policy entirely and run every\nnpm error\nnpm error   --audit\nnpm error     When \"true\" submit audit reports alongside the current npm command to the\nnpm error\nnpm error   --bin-links\nnpm error     Tells npm to create symlinks (or `.cmd` shims on Windows) for package\nnpm error\nnpm error   --fund\nnpm error     When \"true\" displays the message at the end of each `npm install`\nnpm error\nnpm error   --dry-run\nnpm error     Indicates that you don't want npm to make any changes and that it should\nnpm error\nnpm error   -w|--workspace\nnpm error     Enable running a command in the context of the configured workspaces of the\nnpm error\nnpm error   --workspaces\nnpm error     Set to true to run the command in the context of **all** configured\nnpm error\nnpm error   --include-workspace-root\nnpm error     Include the workspace root when workspaces are enabled for a command.\nnpm error\nnpm error   --install-links\nnpm error     When set file: protocol dependencies will be packed and installed as\nnpm error\nnpm error\nnpm error aliases: clean-install, ic, install-clean, isntall-clean\nnpm error\nnpm error Run \"npm help ci\" for more info\nnpm error Log files were not written due to an error writing to the directory: /.npm/_logs\nnpm error You can rerun the command with `--loglevel=verbose` to see the logs in your terminal\n",
+      "stdout": "",
+      "timed_out": false
+    }
+  },
+  "provenance": {
+    "harness_sha256": "6a32118a76207d1a6b65744d5f52fa45dda8a9a128ce4455ac2a255ccaeea2e6",
+    "max_context_bytes": 1048576,
+    "node_image": {
+      "image_id": "sha256:9be410e06dadc1794f44aa4c0fd107a7ecb2edb5cb6bcc6a71c7888caf3cfa12",
+      "repo_digest": "node@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d",
+      "requested": "node:24-bookworm-slim"
+    },
+    "node_version": "v24.18.0",
+    "npm_version": "11.16.0",
+    "opencode_version": "1.18.4",
+    "oracle": {
+      "credential_present": true,
+      "credential_source": "host_env:OPENCODE_API_KEY",
+      "endpoint_identity": {
+        "host": "opencode.ai",
+        "path": "/zen/go/v1/chat/completions",
+        "port": 443,
+        "query_present": false,
+        "scheme": "https",
+        "source": "explicit_harness_environment"
+      },
+      "implementation_model": "opencode-go/deepseek-v4-flash",
+      "primary_model": "deepseek-v4-flash",
+      "secondary_model": "deepseek-v4-flash"
+    },
+    "portable_image": {
+      "image_id": "sha256:c78196d4081619bd89009e777b565b9bc8a78b69a7edaf0f7768a4a15ff97159",
+      "repo_digest": null,
+      "requested": "repoprompt-headless:portable-smoke"
+    },
+    "portable_repository": {
+      "after_dirty_worktree_fingerprint": "8fbf3f67d7b64bdd82107ffb5b583ea7a1801ea003e1400a0c461150f3ad08ed",
+      "dirty_worktree_fingerprint": "8fbf3f67d7b64bdd82107ffb5b583ea7a1801ea003e1400a0c461150f3ad08ed",
+      "head": "d2933839a17aa6ceecfc79cfc498df2f886171b2",
+      "preserved": true
+    },
+    "probe_sha256": "5aee09a37846ef90ec6b8a4f83b29d87f9dd56985a40bf679316a3ed60ae2120",
+    "timeouts": {
+      "application_seconds": 900.0,
+      "provider_seconds": 120,
+      "stdio_seconds": 300.0,
+      "test_seconds": 600.0
+    }
+  },
+  "review": {
+    "agreement": {
+      "acceptance_agreement": false,
+      "verdict_agreement": false
+    },
+    "phase": {
+      "status": "skipped"
+    },
+    "primary": {},
+    "secondary": {}
+  },
+  "run": {
+    "attributed_change": "Measurement harness only; no quality hardening candidate",
+    "candidate_id": "baseline",
+    "completed_at": "2026-07-24T06:03:05.975920+00:00",
+    "iteration": 0,
+    "label": "baseline",
+    "retained_workspace": "/var/folders/d8/vbnhwv5d79g5xdg6ddpw_n7m0000gn/T/rp-portable-quality-91d106cd-ewbltt9q",
+    "run_id": "91d106cd-4f12-4347-984b-2469d309c0bd",
+    "started_at": "2026-07-24T06:03:04.302541+00:00"
+  },
+  "schema_version": 1,
+  "score": {
+    "end_to_end_pass": false,
+    "gates": {
+      "application_scope": false,
+      "npm_test": false,
+      "plan_selection": false,
+      "plan_transport": false,
+      "provenance_isolation": false,
+      "review_acceptance": false,
+      "review_transport": false,
+      "review_verdict_agreement": false,
+      "static_contract": false
+    },
+    "maximum": 100,
+    "points": 0
+  },
+  "verification": {
+    "npm_test": {
+      "exit_code": null
+    },
+    "semantic_probe": {
+      "passed": false,
+      "passed_count": 0
+    },
+    "static_contract": {}
+  }
+}

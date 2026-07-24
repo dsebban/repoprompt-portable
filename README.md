@@ -4,8 +4,9 @@ Portable, UI-free RepoPrompt context building and dual-Oracle MCP for Linux and 
 
 The image packages:
 
-- A read-only stdio MCP server.
+- A read-only stdio MCP server and direct `repoprompt-portable-cli` executable.
 - Deterministic selected-file and slice context building.
+- Local builder clarification plus provider-backed builder plan/review generation.
 - Mandatory independent Primary and Secondary Oracle requests.
 - OpenCode 1.18.4 with `opencode-go/deepseek-v4-flash` defaults.
 - No AppKit, SwiftUI, Xcode, or other Apple UI dependency.
@@ -19,6 +20,20 @@ docker run --rm -i \
   ghcr.io/dsebban/repoprompt-portable:latest \
   --no-persist --root /workspace
 ```
+
+Run the direct CLI from the same image by overriding the default MCP entry point. Repeat `-e` to share one in-memory selection across commands:
+
+```bash
+docker run --rm \
+  --entrypoint repoprompt-portable-cli \
+  --mount type=bind,src="$PWD",dst=/workspace,readonly \
+  ghcr.io/dsebban/repoprompt-portable:latest \
+  --root /workspace \
+  -e 'manage_selection {"op":"set","mode":"full","paths":["README.md"]}' \
+  -e 'context_builder {"instructions":"Assemble the selected file.","response_type":"clarify"}'
+```
+
+The CLI accepts only exact portable tool names and JSON-object arguments. Separate processes do not share selection; save output with normal shell redirection.
 
 Run OpenCode from the same image:
 
@@ -36,6 +51,7 @@ See [the architecture and configuration guide](docs/architecture/portable-oracle
 
 ```bash
 swift build --product repoprompt-headless
+swift build --product repoprompt-portable-cli
 swift test
 bash Scripts/smoke_portable_oracle_docker.sh
 ```

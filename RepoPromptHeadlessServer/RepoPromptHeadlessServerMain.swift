@@ -1,5 +1,5 @@
 import Foundation
-import RepoPromptCore
+import RepoPromptHeadless
 
 #if canImport(Darwin)
 import Darwin

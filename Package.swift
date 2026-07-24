@@ -6,7 +6,8 @@ let package = Package(
 	platforms: [.macOS(.v13)],
 	products: [
 		.library(name: "RepoPromptCore", targets: ["RepoPromptCore"]),
-		.executable(name: "repoprompt-headless", targets: ["RepoPromptHeadless"])
+		.executable(name: "repoprompt-headless", targets: ["RepoPromptHeadlessServer"]),
+		.executable(name: "repoprompt-portable-cli", targets: ["RepoPromptPortableCLI"])
 	],
 	dependencies: [
 		.package(url: "https://github.com/apple/swift-log.git", exact: "1.6.3"),
@@ -24,7 +25,7 @@ let package = Package(
 			],
 			path: "RepoPromptCore"
 		),
-		.executableTarget(
+		.target(
 			name: "RepoPromptHeadless",
 			dependencies: [
 				"RepoPromptCore",
@@ -33,10 +34,32 @@ let package = Package(
 			],
 			path: "RepoPromptHeadless"
 		),
+		.executableTarget(
+			name: "RepoPromptHeadlessServer",
+			dependencies: ["RepoPromptHeadless"],
+			path: "RepoPromptHeadlessServer"
+		),
+		.executableTarget(
+			name: "RepoPromptPortableCLI",
+			dependencies: [
+				"RepoPromptHeadless",
+				.product(name: "MCP", package: "swift-sdk")
+			],
+			path: "RepoPromptPortableCLI"
+		),
 		.testTarget(
 			name: "RepoPromptHeadlessTests",
 			dependencies: ["RepoPromptHeadless"],
 			path: "RepoPromptHeadlessTests"
+		),
+		.testTarget(
+			name: "RepoPromptPortableCLITests",
+			dependencies: [
+				"RepoPromptPortableCLI",
+				"RepoPromptHeadless",
+				.product(name: "MCP", package: "swift-sdk")
+			],
+			path: "RepoPromptPortableCLITests"
 		)
 	],
 	swiftLanguageModes: [.v5]

@@ -2,6 +2,7 @@ import Foundation
 
 public enum HeadlessExitCode: Int32, Sendable {
 	case success = 0
+	case toolFailure = 1
 	case usage = 64
 	case configuration = 78
 	case runtime = 70

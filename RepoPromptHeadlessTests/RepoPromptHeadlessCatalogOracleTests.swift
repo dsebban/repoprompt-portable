@@ -28,12 +28,29 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 			}
 			XCTAssertEqual(schema["additionalProperties"]?.boolValue, false)
 		}
+		let builder = try XCTUnwrap(tools.first { $0.name == "context_builder" })
+		guard
+			case .object(let builderSchema) = builder.inputSchema,
+			case .object(let properties)? = builderSchema["properties"],
+			case .object(let responseType)? = properties["response_type"],
+			case .array(let responseTypes)? = responseType["enum"]
+		else {
+			return XCTFail("Expected context_builder response_type enum")
+		}
+		XCTAssertEqual(responseTypes.compactMap(\.stringValue), ["clarify", "plan", "review"])
+		let builderData = try JSONEncoder().encode(builder)
+		let builderJSON = try XCTUnwrap(JSONSerialization.jsonObject(with: builderData) as? [String: Any])
+		let annotations = try XCTUnwrap(builderJSON["annotations"] as? [String: Any])
+		XCTAssertEqual(annotations["readOnlyHint"] as? Bool, true)
+		XCTAssertEqual(annotations["destructiveHint"] as? Bool, false)
+		XCTAssertEqual(annotations["idempotentHint"] as? Bool, false)
+		XCTAssertEqual(annotations["openWorldHint"] as? Bool, true)
 		let denied = await catalog.call(name: "workspace_context", arguments: [:])
 		XCTAssertEqual(denied.isError, true)
 		XCTAssertEqual(try json(denied)["code"] as? String, "policy_denied")
 	}
 
-	func testContextBuilderIsLocalOnlyStrictAndPreservesSlicesAndCodemapOmissions() async throws {
+	func testContextBuilderClarifyIsLocalStrictAndPreservesSlicesAndCodemapOmissions() async throws {
 		let root = try temporaryDirectory()
 		let file = root.appendingPathComponent("source.txt")
 		try "one\ntwo\nthree".write(to: file, atomically: true, encoding: .utf8)
@@ -84,12 +101,113 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		XCTAssertTrue(omissions.contains { $0["reason"] as? String == "auto_codemap_unsupported" })
 
 		for arguments: [String: Value] in [
-			["instructions": .string("inspect"), "response_type": .string("plan")],
+			["instructions": .string("inspect"), "response_type": .string("question")],
 			["instructions": .string("inspect"), "unknown": .bool(true)],
 			["instructions": .string("inspect"), "max_context_bytes": .int(100)]
 		] {
 			let invalid = await catalog.call(name: "context_builder", arguments: arguments)
 			XCTAssertEqual(invalid.isError, true)
+		}
+	}
+
+	func testContextBuilderValidationPrecedenceAndRequiresProviderOnlyForGeneratedModes() async throws {
+		let root = try temporaryDirectory()
+		let bootstrap = try await HeadlessWorkspaceBootstrap.bootstrap(
+			options: HeadlessOptions(roots: [root.path], persist: false)
+		)
+		let catalog = HeadlessToolCatalog(
+			roots: bootstrap.roots,
+			session: bootstrap.session,
+			router: bootstrap.router,
+			allowWrites: false
+		)
+
+		let cases: [([String: Value], String)] = [
+			(["unknown": .bool(true)], "unknown argument"),
+			(["response_type": .string("question")], "Required string argument"),
+			(["instructions": .string(String(repeating: "x", count: 65_537)), "response_type": .string("question")], "exceed 65536"),
+			(["instructions": .string("inspect"), "response_type": .string("question"), "max_context_bytes": .int(100)], "response_type"),
+			(["instructions": .string("inspect"), "response_type": .string("plan"), "max_context_bytes": .int(100)], "max_context_bytes")
+		]
+		for (arguments, expectedMessage) in cases {
+			let result = await catalog.call(name: "context_builder", arguments: arguments)
+			XCTAssertEqual(result.isError, true)
+			XCTAssertTrue((try json(result)["message"] as? String)?.contains(expectedMessage) == true)
+		}
+
+		let generated = await catalog.call(name: "context_builder", arguments: [
+			"instructions": .string("inspect"),
+			"response_type": .string("plan")
+		])
+		XCTAssertEqual(try json(generated)["code"] as? String, "oracle_not_configured")
+
+		let clarify = await catalog.call(name: "context_builder", arguments: ["instructions": .string("inspect")])
+		XCTAssertEqual(clarify.isError, false)
+		let clarifyJSON = try json(clarify)
+		XCTAssertEqual(clarifyJSON["response_type"] as? String, "clarify")
+		for absent in ["oracle_pair_id", "oracle_results", "chat_id", "oracle_export_path"] {
+			XCTAssertNil(clarifyJSON[absent])
+		}
+	}
+
+	func testContextBuilderPlanAndReviewDispatchFixedLanesAndPreservePairEnvelope() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("selected.txt")
+		try "BUILDER_SELECTED_SENTINEL".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await HeadlessWorkspaceBootstrap.bootstrap(
+			options: HeadlessOptions(roots: [root.path], persist: false)
+		)
+		await bootstrap.session.selectionStore.persist(
+			.init(selectedPaths: [file.path]),
+			for: nil,
+			source: .headless
+		)
+
+		for responseType in ["plan", "review"] {
+			let provider = CatalogOracleProvider(
+				primary: .response("primary \(responseType)"),
+				secondary: .response("secondary \(responseType)"),
+				autoRelease: true
+			)
+			let catalog = HeadlessToolCatalog(
+				roots: bootstrap.roots,
+				session: bootstrap.session,
+				router: bootstrap.router,
+				allowWrites: false,
+				oracleWorkflow: try workflow(provider: provider)
+			)
+			let result = await catalog.call(name: "context_builder", arguments: [
+				"instructions": .string("  generate \(responseType)  "),
+				"response_type": .string(responseType)
+			])
+			XCTAssertEqual(result.isError, false)
+			let object = try json(result)
+			XCTAssertEqual(object["ok"] as? Bool, true)
+			XCTAssertEqual(object["status"] as? String, "response_generated")
+			XCTAssertEqual(object["response_type"] as? String, responseType)
+			XCTAssertEqual(object["prompt"] as? String, "generate \(responseType)")
+			XCTAssertEqual(object["response"] as? String, "primary \(responseType)")
+			XCTAssertEqual(object["pair_status"] as? String, "completed")
+			XCTAssertEqual(object["oracle_decision_policy"] as? String, "caller_decides")
+			XCTAssertEqual(object["model_raw_id"] as? String, "primary-model")
+			for absent in ["chat_id", "new_chat", "oracle_export_path", "winner", "synthesis"] {
+				XCTAssertNil(object[absent])
+			}
+			let oracleResults = try XCTUnwrap(object["oracle_results"] as? [String: Any])
+			XCTAssertEqual((oracleResults["primary"] as? [String: Any])?["status"] as? String, "completed")
+			XCTAssertEqual((oracleResults["secondary"] as? [String: Any])?["status"] as? String, "completed")
+
+			let requests = await provider.requests()
+			XCTAssertEqual(requests.count, 2)
+			XCTAssertEqual(Set(requests.map(\.lane)), Set([.primary, .secondary]))
+			XCTAssertEqual(Set(requests.map(\.model)), Set(["primary-model", "secondary-model"]))
+			XCTAssertEqual(Set(requests.map(\.pairID)).count, 1)
+			XCTAssertEqual(requests[0].userPrompt, requests[1].userPrompt)
+			for request in requests {
+				XCTAssertTrue(request.userPrompt.contains("Request mode: \(responseType)"))
+				XCTAssertTrue(request.userPrompt.contains("generate \(responseType)"))
+				XCTAssertTrue(request.userPrompt.contains("BUILDER_SELECTED_SENTINEL"))
+			}
 		}
 	}
 
@@ -175,9 +293,24 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		let results = try XCTUnwrap(object["oracle_results"] as? [String: Any])
 		let secondary = try XCTUnwrap(results["secondary"] as? [String: Any])
 		XCTAssertEqual(secondary["response"] as? String, "secondary stays nested")
+
+		let builderResult = await catalog.call(name: "context_builder", arguments: [
+			"instructions": .string("review"),
+			"response_type": .string("review")
+		])
+		XCTAssertEqual(builderResult.isError, false)
+		let builder = try json(builderResult)
+		XCTAssertEqual(builder["ok"] as? Bool, false)
+		XCTAssertEqual(builder["status"] as? String, "response_failed")
+		XCTAssertEqual(builder["response_type"] as? String, "review")
+		XCTAssertEqual(builder["pair_status"] as? String, "partial_failure")
+		XCTAssertNil(builder["response"])
+		XCTAssertEqual((builder["error"] as? [String: Any])?["code"] as? String, "timeout")
+		let builderResults = try XCTUnwrap(builder["oracle_results"] as? [String: Any])
+		XCTAssertEqual((builderResults["secondary"] as? [String: Any])?["response"] as? String, "secondary stays nested")
 	}
 
-	func testOracleUsesImmutableSelectionSnapshotForBothLanes() async throws {
+	func testContextBuilderUsesImmutableSelectionSnapshotForBothLanes() async throws {
 		let root = try temporaryDirectory()
 		let original = root.appendingPathComponent("original.txt")
 		let later = root.appendingPathComponent("later.txt")
@@ -204,7 +337,10 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		])
 
 		let oracleTask = Task {
-			await catalog.call(name: "oracle_send", arguments: ["message": .string("review")])
+			await catalog.call(name: "context_builder", arguments: [
+				"instructions": .string("review"),
+				"response_type": .string("plan")
+			])
 		}
 		try await provider.waitForRequests(2)
 		_ = await catalog.call(name: "manage_selection", arguments: [
@@ -223,6 +359,8 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		}
 		let object = try json(result)
 		XCTAssertEqual(object["ok"] as? Bool, true)
+		XCTAssertEqual(object["status"] as? String, "response_generated")
+		XCTAssertEqual(object["response_type"] as? String, "plan")
 		XCTAssertEqual(object["pair_status"] as? String, "completed")
 		XCTAssertEqual(object["response"] as? String, "primary response")
 		XCTAssertEqual(object["model_raw_id"] as? String, "primary-model")

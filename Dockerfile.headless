@@ -5,13 +5,18 @@ WORKDIR /source
 COPY Package.swift Package.resolved ./
 COPY RepoPromptCore ./RepoPromptCore
 COPY RepoPromptHeadless ./RepoPromptHeadless
+COPY RepoPromptHeadlessServer ./RepoPromptHeadlessServer
+COPY RepoPromptPortableCLI ./RepoPromptPortableCLI
 COPY RepoPromptHeadlessTests ./RepoPromptHeadlessTests
+COPY RepoPromptPortableCLITests ./RepoPromptPortableCLITests
 
 RUN swift package dump-package > /tmp/package.json \
 	&& swift package show-dependencies --format json > /tmp/dependencies.json \
 	&& swift build -c release --product repoprompt-headless \
+	&& swift build -c release --product repoprompt-portable-cli \
 	&& mkdir -p /out \
-	&& cp "$(swift build -c release --show-bin-path)/repoprompt-headless" /out/repoprompt-headless
+	&& cp "$(swift build -c release --show-bin-path)/repoprompt-headless" /out/repoprompt-headless \
+	&& cp "$(swift build -c release --show-bin-path)/repoprompt-portable-cli" /out/repoprompt-portable-cli
 
 FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e AS opencode
 
@@ -34,6 +39,7 @@ RUN apt-get update \
 FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e
 
 COPY --from=builder /out/repoprompt-headless /usr/local/bin/repoprompt-headless
+COPY --from=builder /out/repoprompt-portable-cli /usr/local/bin/repoprompt-portable-cli
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 COPY opencode.docker.json /etc/opencode/opencode.json
 

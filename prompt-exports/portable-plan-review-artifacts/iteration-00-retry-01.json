@@ -1,0 +1,287 @@
+{
+  "application": {
+    "outcome": {
+      "exit_code": null
+    },
+    "scope": {
+      "valid": false
+    }
+  },
+  "decision": {
+    "action": "continue",
+    "reason": "one or more mandatory gates failed"
+  },
+  "p_limit": {
+    "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+    "package_lock_sha256": null,
+    "repository": "https://github.com/sindresorhus/p-limit",
+    "selected_paths": [
+      "index.js",
+      "index.d.ts",
+      "index.test-d.ts",
+      "test.js",
+      "readme.md",
+      "package.json"
+    ],
+    "source_workspace_head": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+    "tree": "21d1b1115ab955f499ca0de32b8819b936775dd9"
+  },
+  "plan": {
+    "lanes": {},
+    "phase": {
+      "command": "docker run --rm -i --name rp-quality-plan-e510f67b6f --mount type=bind,src=/var/folders/d8/vbnhwv5d79g5xdg6ddpw_n7m0000gn/T/rp-portable-quality-a5c9a85c-r26cm8rt/iteration,dst=/workspace,readonly --env-file /var/folders/d8/vbnhwv5d79g5xdg6ddpw_n7m0000gn/T/rp-quality-5v67xj5w.env sha256:c78196d4081619bd89009e777b565b9bc8a78b69a7edaf0f7768a4a15ff97159 --no-persist --root /workspace",
+      "duration_seconds": 0.895,
+      "error": null,
+      "initialize": {
+        "capabilities": {
+          "tools": {
+            "listChanged": false
+          }
+        },
+        "instructions": "RepoPrompt Headless exposes read-only workspace tools and selected-file context assembly over stdio. context_builder clarify stays local; context_builder plan/review and oracle_send disclose the rendered selected context to the configured provider in mandatory two-lane requests.",
+        "protocolVersion": "2025-03-26",
+        "serverInfo": {
+          "name": "RepoPrompt Headless",
+          "title": "RepoPrompt Headless",
+          "version": "0.1.0"
+        }
+      },
+      "selection": {
+        "ok": true,
+        "selection": {
+          "auto_codemap_paths": [],
+          "codemap_auto_enabled": true,
+          "selected_count": 6,
+          "selected_paths": [
+            "index.js",
+            "index.d.ts",
+            "index.test-d.ts",
+            "test.js",
+            "readme.md",
+            "package.json"
+          ],
+          "slices": {}
+        }
+      },
+      "status": "failed",
+      "tool_is_error": false,
+      "tool_result": {
+        "error": {
+          "code": "http_error",
+          "http_status": 429,
+          "message": "Weekly usage limit reached. Resets in 2 days. To continue using this model now, enable usage from your available balance: https://opencode.ai/workspace/wrk_01KKGV6PKAY8YBRH33HYD8CC62/go"
+        },
+        "model_raw_id": "deepseek-v4-flash",
+        "ok": false,
+        "oracle_decision_policy": "caller_decides",
+        "oracle_pair_id": "F4E730BC-C551-4D1E-8B15-037F6ACEA148",
+        "oracle_results": {
+          "primary": {
+            "error": {
+              "code": "http_error",
+              "http_status": 429,
+              "message": "Weekly usage limit reached. Resets in 2 days. To continue using this model now, enable usage from your available balance: https://opencode.ai/workspace/wrk_01KKGV6PKAY8YBRH33HYD8CC62/go"
+            },
+            "model_raw_id": "deepseek-v4-flash",
+            "oracle_lane": "primary",
+            "provider": "openai_compatible",
+            "status": "failed"
+          },
+          "secondary": {
+            "error": {
+              "code": "http_error",
+              "http_status": 429,
+              "message": "Weekly usage limit reached. Resets in 2 days. To continue using this model now, enable usage from your available balance: https://opencode.ai/workspace/wrk_01KKGV6PKAY8YBRH33HYD8CC62/go"
+            },
+            "model_raw_id": "deepseek-v4-flash",
+            "oracle_lane": "secondary",
+            "provider": "openai_compatible",
+            "status": "failed"
+          }
+        },
+        "pair_status": "failed",
+        "prompt": "Add AbortSignal support to pLimit options. When the signal aborts, reject queued tasks with signal.reason, reject future submissions immediately, and leave already-running tasks untouched. Update runtime implementation, TypeScript declarations, tests, and README documentation. Preserve existing rejectOnClear behavior and avoid abort-listener leaks.\n\nReturn a concrete implementation plan. End the response with exactly one machine-readable block and no text after it:\n<portable_plan_result>\n{\"schema_version\":1,\"verdict\":\"ready|needs_changes\",\"blocking_issues\":[{\"category\":\"one of the coverage keys\",\"summary\":\"concise\"}],\"coverage\":{\"queued_exact_reason\":\"covered|missing\",\"future_immediate_rejection\":\"covered|missing\",\"running_untouched\":\"covered|missing\",\"pre_aborted_signal\":\"covered|missing\",\"falsey_reason\":\"covered|missing\",\"pending_count\":\"covered|missing\",\"reject_on_clear\":\"covered|missing\",\"listener_lifecycle\":\"covered|missing\",\"derived_apis\":\"covered|missing\",\"type_declarations\":\"covered|missing\",\"tests\":\"covered|missing\",\"documentation\":\"covered|missing\"},\"files_to_modify\":[\"paths\"],\"test_case_ids\":[\"stable ids\"],\"listener_lifecycle_strategy\":\"summary\"}\n</portable_plan_result>",
+        "response_type": "plan",
+        "status": "response_failed",
+        "workspace_context": {
+          "content": "[RepoPrompt portable workspace context]\nroot[0]\n\n===== BEGIN FILE root[0]:index.js [full] =====\nimport Queue from 'yocto-queue';\n\nexport default function pLimit(concurrency) {\n\tlet rejectOnClear = false;\n\n\tif (typeof concurrency === 'object') {\n\t\t({concurrency, rejectOnClear = false} = concurrency);\n\t}\n\n\tvalidateConcurrency(concurrency);\n\n\tif (typeof rejectOnClear !== 'boolean') {\n\t\tthrow new TypeError('Expected `rejectOnClear` to be a boolean');\n\t}\n\n\tconst queue = new Queue();\n\tlet activeCount = 0;\n\n\tconst resumeNext = () => {\n\t\t// Process the next queued function if we're under the concurrency limit\n\t\tif (activeCount < concurrency && queue.size > 0) {\n\t\t\tactiveCount++;\n\t\t\tqueue.dequeue().run();\n\t\t}\n\t};\n\n\tconst next = () => {\n\t\tactiveCount--;\n\t\tresumeNext();\n\t};\n\n\tconst run = async (function_, resolve, arguments_) => {\n\t\t// Execute the function and capture the result promise\n\t\tconst result = (async () => function_(...arguments_))();\n\n\t\t// Resolve immediately with the promise (don't wait for completion)\n\t\tresolve(result);\n\n\t\t// Wait for the function to complete (success or failure)\n\t\t// We catch errors here to prevent unhandled rejections,\n\t\t// but the original promise rejection is preserved for the caller\n\t\ttry {\n\t\t\tawait result;\n\t\t} catch {}\n\n\t\t// Decrement active count and process next queued function\n\t\tnext();\n\t};\n\n\tconst enqueue = (function_, resolve, reject, arguments_) => {\n\t\tconst queueItem = {reject};\n\n\t\t// Queue the internal resolve function instead of the run function\n\t\t// to preserve the asynchronous execution context.\n\t\tnew Promise(internalResolve => { // eslint-disable-line promise/param-names\n\t\t\tqueueItem.run = internalResolve;\n\t\t\tqueue.enqueue(queueItem);\n\t\t}).then(run.bind(undefined, function_, resolve, arguments_)); // eslint-disable-line promise/prefer-await-to-then\n\n\t\t// Start processing immediately if we haven't reached the concurrency limit\n\t\tif (activeCount < concurrency) {\n\t\t\tresumeNext();\n\t\t}\n\t};\n\n\tconst generator = (function_, ...arguments_) => new Promise((resolve, reject) => {\n\t\tenqueue(function_, resolve, reject, arguments_);\n\t});\n\n\tObject.defineProperties(generator, {\n\t\tactiveCount: {\n\t\t\tget: () => activeCount,\n\t\t},\n\t\tpendingCount: {\n\t\t\tget: () => queue.size,\n\t\t},\n\t\tclearQueue: {\n\t\t\tvalue() {\n\t\t\t\tif (!rejectOnClear) {\n\t\t\t\t\tqueue.clear();\n\t\t\t\t\treturn;\n\t\t\t\t}\n\n\t\t\t\tconst abortError = AbortSignal.abort().reason;\n\n\t\t\t\twhile (queue.size > 0) {\n\t\t\t\t\tqueue.dequeue().reject(abortError);\n\t\t\t\t}\n\t\t\t},\n\t\t},\n\t\tconcurrency: {\n\t\t\tget: () => concurrency,\n\n\t\t\tset(newConcurrency) {\n\t\t\t\tvalidateConcurrency(newConcurrency);\n\t\t\t\tconcurrency = newConcurrency;\n\n\t\t\t\tqueueMicrotask(() => {\n\t\t\t\t\t// eslint-disable-next-line no-unmodified-loop-condition\n\t\t\t\t\twhile (activeCount < concurrency && queue.size > 0) {\n\t\t\t\t\t\tresumeNext();\n\t\t\t\t\t}\n\t\t\t\t});\n\t\t\t},\n\t\t},\n\t\tmap: {\n\t\t\tasync value(iterable, function_) {\n\t\t\t\tconst promises = Array.from(iterable, (value, index) => generator(function_, value, index));\n\t\t\t\treturn Promise.all(promises);\n\t\t\t},\n\t\t},\n\t});\n\n\treturn generator;\n}\n\nexport function limitFunction(function_, options) {\n\tconst limit = pLimit(options);\n\n\treturn (...arguments_) => limit(() => function_(...arguments_));\n}\n\nfunction validateConcurrency(concurrency) {\n\tif (!((Number.isInteger(concurrency) || concurrency === Number.POSITIVE_INFINITY) && concurrency > 0)) {\n\t\tthrow new TypeError('Expected `concurrency` to be a number from 1 and up');\n\t}\n}\n\n===== END FILE root[0]:index.js =====\n\n===== BEGIN FILE root[0]:index.d.ts [full] =====\nexport type LimitFunction = {\n\t/**\n\tThe number of promises that are currently running.\n\t*/\n\treadonly activeCount: number;\n\n\t/**\n\tThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\t*/\n\treadonly pendingCount: number;\n\n\t/**\n\tGet or set the concurrency limit.\n\t*/\n\tconcurrency: number;\n\n\t/**\n\tDiscard pending promises that are waiting to run.\n\n\tThis might be useful if you want to tear down the queue at the end of your program's lifecycle or discard any function calls referencing an intermediary state of your app.\n\n\tNote: This does not cancel promises that are already running.\n\n\tWhen `rejectOnClear` is enabled, pending promises are rejected with an `AbortError`.\n\tThis is recommended if you await the returned promises, for example with `Promise.all`, so pending tasks do not remain unresolved after `clearQueue()`.\n\t*/\n\tclearQueue: () => void;\n\n\t/**\n\tProcess an iterable of inputs with limited concurrency.\n\n\tThe mapper function receives the item value and its index.\n\n\tThis is a convenience function for processing inputs that arrive in batches. For more complex use cases, see [p-map](https://github.com/sindresorhus/p-map).\n\n\t@param iterable - An iterable containing an argument for the given function.\n\t@param mapperFunction - Promise-returning/async function.\n\t@returns A promise equivalent to `Promise.all(Array.from(iterable, (item, index) => limit(mapperFunction, item, index)))`.\n\t*/\n\tmap: <Input, ReturnType> (\n\t\titerable: Iterable<Input>,\n\t\tmapperFunction: (input: Input, index: number) => PromiseLike<ReturnType> | ReturnType\n\t) => Promise<ReturnType[]>;\n\n\t/**\n\t@param fn - Promise-returning/async function.\n\t@param arguments - Any arguments to pass through to `fn`. Support for passing arguments on to the `fn` is provided in order to be able to avoid creating unnecessary closures. You probably don't need this optimization unless you're pushing a *lot* of functions.\n\n\tWarning: Avoid calling the same `limit` function inside a function that is already limited by it. This can create a deadlock where inner tasks never run. Use a separate limiter for inner tasks.\n\n\t@returns The promise returned by calling `fn(...arguments)`.\n\t*/\n\t<Arguments extends unknown[], ReturnType>(\n\t\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType> | ReturnType,\n\t\t...arguments_: Arguments\n\t): Promise<ReturnType>;\n};\n\n/**\nRun multiple promise-returning & async functions with limited concurrency.\n\n@param concurrency - Concurrency limit. Minimum: `1`. You can pass a number or an options object with a `concurrency` property.\n@returns A `limit` function.\n\n@example\n```\nimport pLimit from 'p-limit';\n\nconst limit = pLimit(1);\n\nconst input = [\n\tlimit(() => fetchSomething('foo')),\n\tlimit(() => fetchSomething('bar')),\n\tlimit(() => doSomething())\n];\n\n// Only one promise is run at once\nconst result = await Promise.all(input);\nconsole.log(result);\n```\n\n@example\n```\nimport pLimit from 'p-limit';\n\nconst limit = pLimit({concurrency: 1});\n```\n*/\nexport default function pLimit(concurrency: number | Options): LimitFunction;\n\nexport type Options = {\n\t/**\n\tConcurrency limit.\n\n\tMinimum: `1`.\n\t*/\n\treadonly concurrency: number;\n\n\t/**\n\tReject pending promises with an `AbortError` when `clearQueue()` is called.\n\n\tDefault: `false`.\n\n\tThis is recommended if you await the returned promises, for example with `Promise.all`, so pending tasks do not remain unresolved after `clearQueue()`.\n\t*/\n\treadonly rejectOnClear?: boolean;\n};\n\n/**\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control the number of simultaneous executions of a single function, rather than managing concurrency across multiple functions.\n\n@param function_ - Promise-returning/async function.\n@return Function with limited concurrency.\n\n@example\n```\nimport {limitFunction} from 'p-limit';\n\nconst limitedFunction = limitFunction(async () => {\n\treturn doSomething();\n}, {concurrency: 1});\n\nconst input = Array.from({length: 10}, limitedFunction);\n\n// Only one promise is run at once.\nawait Promise.all(input);\n```\n*/\nexport function limitFunction<Arguments extends unknown[], ReturnType>(\n\tfunction_: (...arguments_: Arguments) => PromiseLike<ReturnType>,\n\toptions: Options\n): (...arguments_: Arguments) => Promise<ReturnType>;\n\n===== END FILE root[0]:index.d.ts =====\n\n===== BEGIN FILE root[0]:index.test-d.ts [full] =====\nimport {expectType, expectError} from 'tsd';\nimport pLimit, {limitFunction} from './index.js';\n\nconst limit = pLimit(1);\nconst limitWithRejectOnClear = pLimit({concurrency: 1, rejectOnClear: true});\n\nconst input = [\n\tlimit(async () => 'foo'),\n\tlimit(async () => 'bar'),\n\tlimit(async () => undefined),\n];\n\nexpectType<Promise<Array<string | undefined>>>(Promise.all(input));\n\nexpectType<Promise<string>>(limit((_a: string) => '', 'test'));\nexpectType<Promise<string>>(limit(async (_a: string, _b: number) => '', 'test', 1));\n\nexpectType<number>(limit.activeCount);\nexpectType<number>(limit.pendingCount);\n\nexpectType<void>(limit.clearQueue());\nexpectType<void>(limitWithRejectOnClear.clearQueue());\n\n// LimitFunction should require a Promise-returning function\nconst lf = limitFunction(async (_a: string) => 'ok', {concurrency: 1});\nexpectType<Promise<string>>(lf('input'));\n\nexpectError(limitFunction((_a: string) => 'x', {concurrency: 1}));\nexpectError(pLimit({concurrency: 1, rejectOnClear: 'nope'}));\n\n// LimitFunction.map accepts iterables\nexpectType<Promise<string[]>>(limit.map(new Set(['a', 'b', 'c']), async x => x + x));\nexpectType<Promise<number[]>>(limit.map([1, 2, 3].values(), async x => x * 2));\n\n===== END FILE root[0]:index.test-d.ts =====\n\n===== BEGIN FILE root[0]:test.js [full] =====\nimport process from 'node:process';\nimport {AsyncLocalStorage} from 'node:async_hooks';\nimport {setTimeout as delay} from 'node:timers/promises';\nimport test from 'ava';\nimport inRange from 'in-range';\nimport timeSpan from 'time-span';\nimport randomInt from 'random-int';\nimport pLimit, {limitFunction} from './index.js';\n\ntest('concurrency: 1', async t => {\n\tconst input = [\n\t\t[10, 300],\n\t\t[20, 200],\n\t\t[30, 100],\n\t];\n\n\tconst end = timeSpan();\n\tconst limit = pLimit(1);\n\n\tconst mapper = ([value, ms]) => limit(async () => {\n\t\tawait delay(ms);\n\t\treturn value;\n\t});\n\n\tt.deepEqual(await Promise.all(input.map(x => mapper(x))), [10, 20, 30]);\n\tt.true(inRange(end(), {start: 590, end: 650}));\n});\n\ntest('concurrency: 4', async t => {\n\tconst concurrency = 5;\n\tlet running = 0;\n\n\tconst limit = pLimit(concurrency);\n\n\tconst input = Array.from({length: 100}, () => limit(async () => {\n\t\trunning++;\n\t\tt.true(running <= concurrency);\n\t\tawait delay(randomInt(30, 200));\n\t\trunning--;\n\t}));\n\n\tawait Promise.all(input);\n});\n\ntest('propagates async execution context properly', async t => {\n\tconst concurrency = 2;\n\tconst limit = pLimit(concurrency);\n\tconst store = new AsyncLocalStorage();\n\n\tconst checkId = async id => {\n\t\tawait Promise.resolve();\n\t\tt.is(id, store.getStore()?.id);\n\t};\n\n\tconst startContext = async id => store.run({id}, () => limit(checkId, id));\n\n\tawait Promise.all(Array.from({length: 100}, (_, id) => startContext(id)));\n});\n\ntest('non-promise returning function', async t => {\n\tawait t.notThrowsAsync(async () => {\n\t\tconst limit = pLimit(1);\n\t\tawait limit(() => null);\n\t});\n});\n\ntest('continues after sync throw', async t => {\n\tconst limit = pLimit(1);\n\tlet ran = false;\n\n\tconst promises = [\n\t\tlimit(() => {\n\t\t\tthrow new Error('err');\n\t\t}),\n\t\tlimit(() => {\n\t\t\tran = true;\n\t\t}),\n\t];\n\n\ttry {\n\t\tawait Promise.all(promises);\n\t} catch {}\n\n\tt.is(ran, true);\n});\n\ntest('accepts additional arguments', async t => {\n\tconst limit = pLimit(1);\n\tconst symbol = Symbol('test');\n\n\tawait limit(a => t.is(a, symbol), symbol);\n});\n\ntest('shared context with a limited provider helper', async t => {\n\tconst limit = pLimit(1);\n\tconst sharedContext = {values: []};\n\n\tconst runWithContext = (function_, ...arguments_) => limit(function_, sharedContext, ...arguments_);\n\n\tconst addValue = async (context, value) => {\n\t\tcontext.values.push(value);\n\t\tawait delay(10);\n\t\treturn context.values.length;\n\t};\n\n\tconst firstPromise = runWithContext(addValue, 'first');\n\tconst secondPromise = runWithContext(addValue, 'second');\n\n\tt.is(limit.activeCount, 1);\n\tt.is(limit.pendingCount, 1);\n\n\tconst results = await Promise.all([firstPromise, secondPromise]);\n\n\tt.deepEqual(results, [1, 2]);\n\tt.deepEqual(sharedContext.values, ['first', 'second']);\n});\n\ntest('does not ignore errors', async t => {\n\tconst limit = pLimit(1);\n\tconst error = new Error('\ud83e\udd84');\n\n\tconst promises = [\n\t\tlimit(async () => {\n\t\t\tawait delay(30);\n\t\t}),\n\t\tlimit(async () => {\n\t\t\tawait delay(80);\n\t\t\tthrow error;\n\t\t}),\n\t\tlimit(async () => {\n\t\t\tawait delay(50);\n\t\t}),\n\t];\n\n\tawait t.throwsAsync(Promise.all(promises), {is: error});\n});\n\ntest('runs all tasks asynchronously', async t => {\n\tconst limit = pLimit(3);\n\n\tlet value = 1;\n\n\tconst one = limit(() => 1);\n\tconst two = limit(() => value);\n\n\tt.is(limit.activeCount, 2);\n\n\tvalue = 2;\n\n\tconst result = await Promise.all([one, two]);\n\n\tt.deepEqual(result, [1, 2]);\n});\n\ntest('activeCount and pendingCount properties', async t => {\n\tconst limit = pLimit(5);\n\tt.is(limit.activeCount, 0);\n\tt.is(limit.pendingCount, 0);\n\n\tconst runningPromise1 = limit(() => delay(1000));\n\tt.is(limit.activeCount, 1);\n\tt.is(limit.pendingCount, 0);\n\n\tawait runningPromise1;\n\tt.is(limit.activeCount, 0);\n\tt.is(limit.pendingCount, 0);\n\n\tconst immediatePromises = Array.from({length: 5}, () => limit(() => delay(1000)));\n\tconst delayedPromises = Array.from({length: 3}, () => limit(() => delay(1000)));\n\n\tt.is(limit.activeCount, 5);\n\tt.is(limit.pendingCount, 3);\n\n\tawait Promise.all(immediatePromises);\n\tt.is(limit.activeCount, 3);\n\tt.is(limit.pendingCount, 0);\n\n\tawait Promise.all(delayedPromises);\n\n\tt.is(limit.activeCount, 0);\n\tt.is(limit.pendingCount, 0);\n});\n\ntest('clearQueue', async t => {\n\tconst limit = pLimit(1);\n\n\tArray.from({length: 1}, () => limit(() => delay(1000)));\n\tArray.from({length: 3}, () => limit(() => delay(1000)));\n\n\tawait Promise.resolve();\n\tt.is(limit.pendingCount, 3);\n\tlimit.clearQueue();\n\tt.is(limit.pendingCount, 0);\n});\n\n// Node.js 20 has a bug where DOMException is not properly handled by AVA's `throwsAsync`.\nconst testClearQueueRejects = process.versions.node.startsWith('20.') ? test.skip : test;\n\ntestClearQueueRejects('clearQueue rejects pending promises when enabled', async t => {\n\tconst limit = pLimit({concurrency: 1, rejectOnClear: true});\n\n\tconst runningPromise = limit(() => delay(100));\n\tconst pendingPromiseOne = limit(() => delay(10));\n\tconst pendingPromiseTwo = limit(() => delay(10));\n\n\tawait Promise.resolve();\n\tt.is(limit.pendingCount, 2);\n\n\tlimit.clearQueue();\n\tt.is(limit.pendingCount, 0);\n\n\tawait runningPromise;\n\tawait t.throwsAsync(pendingPromiseOne, {name: 'AbortError'});\n\tawait t.throwsAsync(pendingPromiseTwo, {name: 'AbortError'});\n});\n\ntest('map', async t => {\n\tconst limit = pLimit(1);\n\tconst results = await limit.map([1, 2, 3, 4, 5, 6, 7], input => input + 1);\n\n\tt.deepEqual(results, [2, 3, 4, 5, 6, 7, 8]);\n});\n\ntest('map works when detached from the limit', async t => {\n\tconst limit = pLimit(1);\n\tconst {map} = limit;\n\tlet running = 0;\n\tlet maxRunning = 0;\n\tconst mapper = async input => {\n\t\trunning++;\n\t\tmaxRunning = Math.max(maxRunning, running);\n\t\tawait delay(10);\n\t\trunning--;\n\t\treturn input * 2;\n\t};\n\n\tconst directResult = limit(mapper, 1);\n\tconst mapResult = map([2, 3], mapper);\n\n\tt.deepEqual(await Promise.all([directResult, mapResult]), [2, [4, 6]]);\n\tt.is(maxRunning, 1);\n});\n\ntest('map passes index and preserves order with concurrency', async t => {\n\tconst limit = pLimit(3);\n\tconst inputs = [10, 10, 10, 10, 10];\n\n\t// eslint-disable-next-line unicorn/no-array-method-this-argument\n\tconst results = await limit.map(inputs, async (value, index) => {\n\t\t// Simulate variable async duration per index to shuffle completion order\n\t\tawait delay((inputs.length - index) * 5);\n\t\treturn value + index;\n\t});\n\n\t// Results should be in input order and include index\n\tt.deepEqual(results, [10, 11, 12, 13, 14]);\n});\n\ntest('map accepts an iterable (set)', async t => {\n\tconst limit = pLimit(2);\n\tconst inputs = new Set([1, 2, 3, 4]);\n\n\tconst results = await limit.map(inputs, input => input * 2); // eslint-disable-line unicorn/no-array-method-this-argument\n\n\tt.deepEqual(results, [2, 4, 6, 8]);\n});\n\ntest('map accepts an iterable (array iterator)', async t => {\n\tconst limit = pLimit(2);\n\tconst inputs = [1, 2, 3, 4].values();\n\n\tconst results = await limit.map(inputs, input => input * 2); // eslint-disable-line unicorn/no-array-method-this-argument\n\n\tt.deepEqual(results, [2, 4, 6, 8]);\n});\n\ntest('accepts options object', async t => {\n\tconst limit = pLimit({concurrency: 1});\n\n\tconst input = [\n\t\tlimit(async () => {\n\t\t\tawait delay(50);\n\t\t\treturn 1;\n\t\t}),\n\t\tlimit(async () => {\n\t\t\tawait delay(50);\n\t\t\treturn 2;\n\t\t}),\n\t];\n\n\tt.deepEqual(await Promise.all(input), [1, 2]);\n\tt.is(limit.concurrency, 1);\n});\n\ntest('throws on invalid concurrency argument', t => {\n\tt.throws(() => {\n\t\tpLimit(0);\n\t});\n\n\tt.throws(() => {\n\t\tpLimit(-1);\n\t});\n\n\tt.throws(() => {\n\t\tpLimit(1.2);\n\t});\n\n\tt.throws(() => {\n\t\tpLimit(undefined);\n\t});\n\n\tt.throws(() => {\n\t\tpLimit(true);\n\t});\n\n\tt.throws(() => {\n\t\tpLimit({});\n\t});\n\n\tt.throws(() => {\n\t\tpLimit({concurrency: 0});\n\t});\n});\n\ntest('change concurrency to smaller value', async t => {\n\tconst limit = pLimit(4);\n\tlet running = 0;\n\tconst log = [];\n\tconst promises = Array.from({length: 10}).map(() =>\n\t\tlimit(async () => {\n\t\t\t++running;\n\t\t\tlog.push(running);\n\t\t\tawait delay(50);\n\t\t\t--running;\n\t\t}));\n\tawait delay(0);\n\tt.is(running, 4);\n\n\tlimit.concurrency = 2;\n\tawait Promise.all(promises);\n\tt.deepEqual(log, [1, 2, 3, 4, 2, 2, 2, 2, 2, 2]);\n});\n\ntest('change concurrency to bigger value', async t => {\n\tconst limit = pLimit(2);\n\tlet running = 0;\n\tconst log = [];\n\tconst promises = Array.from({length: 10}).map(() =>\n\t\tlimit(async () => {\n\t\t\t++running;\n\t\t\tlog.push(running);\n\t\t\tawait delay(50);\n\t\t\t--running;\n\t\t}));\n\tawait delay(0);\n\tt.is(running, 2);\n\n\tlimit.concurrency = 4;\n\tawait Promise.all(promises);\n\tt.deepEqual(log, [1, 2, 3, 4, 4, 4, 4, 4, 4, 4]);\n});\n\ntest('limitFunction()', async t => {\n\tconst concurrency = 5;\n\tlet running = 0;\n\n\tconst limitedFunction = limitFunction(async () => {\n\t\trunning++;\n\t\tt.true(running <= concurrency);\n\t\tawait delay(randomInt(30, 200));\n\t\trunning--;\n\t}, {concurrency});\n\n\tconst input = Array.from({length: 100}, limitedFunction);\n\n\tawait Promise.all(input);\n});\n\n===== END FILE root[0]:test.js =====\n\n===== BEGIN FILE root[0]:readme.md [full] =====\n# p-limit\n\n> Run multiple promise-returning & async functions with limited concurrency\n\n*Works in Node.js and browsers.*\n\n## Install\n\n```sh\nnpm install p-limit\n```\n\n## Usage\n\n```js\nimport pLimit from 'p-limit';\n\nconst limit = pLimit(1);\n\nconst input = [\n\tlimit(() => fetchSomething('foo')),\n\tlimit(() => fetchSomething('bar')),\n\tlimit(() => doSomething())\n];\n\n// Only one promise is run at once\nconst result = await Promise.all(input);\nconsole.log(result);\n```\n\n## API\n\n### pLimit(concurrency) <sup>default export</sup>\n\nReturns a `limit` function.\n\n#### concurrency\n\nType: `number | object`\\\nMinimum: `1`\n\nConcurrency limit.\n\nYou can pass a number or an options object with a `concurrency` property.\n\n#### rejectOnClear\n\nType: `boolean`\\\nDefault: `false`\n\nReject pending promises with an `AbortError` when `clearQueue()` is called.\nThis is recommended if you await the returned promises, for example with `Promise.all`, so pending tasks do not remain unresolved after `clearQueue()`.\n\n```js\nimport pLimit from 'p-limit';\n\nconst limit = pLimit({concurrency: 1});\n```\n\n### limit(fn, ...args)\n\nReturns the promise returned by calling `fn(...args)`.\n\n#### fn\n\nType: `Function`\n\nPromise-returning/async function.\n\n#### args\n\nAny arguments to pass through to `fn`.\n\nSupport for passing arguments on to the `fn` is provided in order to be able to avoid creating unnecessary closures. You probably don't need this optimization unless you're pushing a *lot* of functions.\n\nWarning: Avoid calling the same `limit` function inside a function that is already limited by it. This can create a deadlock where inner tasks never run. Use a separate limiter for inner tasks.\n\n### limit.map(iterable, mapperFunction)\n\nProcess an iterable of inputs with limited concurrency.\n\nThe mapper function receives the item value and its index.\n\nReturns a promise equivalent to `Promise.all(Array.from(iterable, (item, index) => limit(mapperFunction, item, index)))`.\n\nThis is a convenience function for processing inputs that arrive in batches. For more complex use cases, see [p-map](https://github.com/sindresorhus/p-map).\n\n### limit.activeCount\n\nThe number of promises that are currently running.\n\n### limit.pendingCount\n\nThe number of promises that are waiting to run (i.e. their internal `fn` was not called yet).\n\n### limit.clearQueue()\n\nDiscard pending promises that are waiting to run.\n\nThis might be useful if you want to tear down the queue at the end of your program's lifecycle or discard any function calls referencing an intermediary state of your app.\n\nNote: This does not cancel promises that are already running.\n\nWhen `rejectOnClear` is enabled, pending promises are rejected with an `AbortError`.\nThis is recommended if you await the returned promises, for example with `Promise.all`, so pending tasks do not remain unresolved after `clearQueue()`.\n\n### limit.concurrency\n\nGet or set the concurrency limit.\n\n### limitFunction(fn, options) <sup>named export</sup>\n\nReturns a function with limited concurrency.\n\nThe returned function manages its own concurrent executions, allowing you to call it multiple times without exceeding the specified concurrency limit.\n\nIdeal for scenarios where you need to control the number of simultaneous executions of a single function, rather than managing concurrency across multiple functions.\n\n```js\nimport {limitFunction} from 'p-limit';\n\nconst limitedFunction = limitFunction(async () => {\n\treturn doSomething();\n}, {concurrency: 1});\n\nconst input = Array.from({length: 10}, limitedFunction);\n\n// Only one promise is run at once.\nawait Promise.all(input);\n```\n\n#### fn\n\nType: `Function`\n\nPromise-returning/async function.\n\n#### options\n\nType: `object`\n\n#### concurrency\n\nType: `number`\\\nMinimum: `1`\n\nConcurrency limit.\n\n#### rejectOnClear\n\nType: `boolean`\\\nDefault: `false`\n\nReject pending promises with an `AbortError` when `clearQueue()` is called.\nThis is recommended if you await the returned promises, for example with `Promise.all`, so pending tasks do not remain unresolved after `clearQueue()`.\n\n## Recipes\n\nSee [recipes.md](recipes.md) for common use cases and patterns.\n\n## FAQ\n\n### How is this different from the [`p-queue`](https://github.com/sindresorhus/p-queue) package?\n\nThis package is only about limiting the number of concurrent executions, while `p-queue` is a fully featured queue implementation with lots of different options, introspection, and ability to pause the queue.\n\n## Related\n\n- [p-throttle](https://github.com/sindresorhus/p-throttle) - Throttle promise-returning & async functions\n- [p-debounce](https://github.com/sindresorhus/p-debounce) - Debounce promise-returning & async functions\n- [p-map](https://github.com/sindresorhus/p-map) - Run promise-returning & async functions concurrently with different inputs\n- [p-all](https://github.com/sindresorhus/p-all) - Run promise-returning & async functions concurrently with optional limited concurrency\n- [More\u2026](https://github.com/sindresorhus/promise-fun)\n\n===== END FILE root[0]:readme.md =====\n\n===== BEGIN FILE root[0]:package.json [full] =====\n{\n\t\"name\": \"p-limit\",\n\t\"version\": \"7.3.1\",\n\t\"description\": \"Run multiple promise-returning & async functions with limited concurrency\",\n\t\"license\": \"MIT\",\n\t\"repository\": \"sindresorhus/p-limit\",\n\t\"funding\": \"https://github.com/sponsors/sindresorhus\",\n\t\"author\": {\n\t\t\"name\": \"Sindre Sorhus\",\n\t\t\"email\": \"sindresorhus@gmail.com\",\n\t\t\"url\": \"https://sindresorhus.com\"\n\t},\n\t\"type\": \"module\",\n\t\"exports\": {\n\t\t\"types\": \"./index.d.ts\",\n\t\t\"default\": \"./index.js\"\n\t},\n\t\"sideEffects\": false,\n\t\"engines\": {\n\t\t\"node\": \">=20\"\n\t},\n\t\"scripts\": {\n\t\t\"test\": \"xo && ava && tsd\",\n\t\t\"benchmark\": \"node benchmark.js\"\n\t},\n\t\"files\": [\n\t\t\"index.js\",\n\t\t\"index.d.ts\"\n\t],\n\t\"keywords\": [\n\t\t\"promise\",\n\t\t\"limit\",\n\t\t\"limited\",\n\t\t\"concurrency\",\n\t\t\"throttle\",\n\t\t\"throat\",\n\t\t\"rate\",\n\t\t\"batch\",\n\t\t\"ratelimit\",\n\t\t\"task\",\n\t\t\"queue\",\n\t\t\"async\",\n\t\t\"await\",\n\t\t\"promises\",\n\t\t\"bluebird\"\n\t],\n\t\"dependencies\": {\n\t\t\"yocto-queue\": \"^1.2.1\"\n\t},\n\t\"devDependencies\": {\n\t\t\"ava\": \"^6.4.1\",\n\t\t\"in-range\": \"^3.0.0\",\n\t\t\"random-int\": \"^3.0.0\",\n\t\t\"time-span\": \"^5.1.0\",\n\t\t\"tsd\": \"^0.33.0\",\n\t\t\"xo\": \"^1.2.1\"\n\t}\n}\n\n===== END FILE root[0]:package.json =====\n",
+          "context_bytes": 24340,
+          "entries": [
+            {
+              "content_bytes": 3315,
+              "kind": "selected_full",
+              "path": "index.js"
+            },
+            {
+              "content_bytes": 4429,
+              "kind": "selected_full",
+              "path": "index.d.ts"
+            },
+            {
+              "content_bytes": 1209,
+              "kind": "selected_full",
+              "path": "index.test-d.ts"
+            },
+            {
+              "content_bytes": 8764,
+              "kind": "selected_full",
+              "path": "test.js"
+            },
+            {
+              "content_bytes": 4972,
+              "kind": "selected_full",
+              "path": "readme.md"
+            },
+            {
+              "content_bytes": 1055,
+              "kind": "selected_full",
+              "path": "package.json"
+            }
+          ],
+          "max_context_bytes": 1048576,
+          "omissions": [],
+          "omitted_root_count": 0,
+          "roots": [
+            "/workspace"
+          ],
+          "selection": {
+            "auto_codemap_paths": [],
+            "codemap_auto_enabled": true,
+            "selected_paths": [
+              "index.js",
+              "index.d.ts",
+              "index.test-d.ts",
+              "test.js",
+              "readme.md",
+              "package.json"
+            ],
+            "slices": {}
+          },
+          "truncated": false
+        }
+      },
+      "transport": {
+        "exit_code": 0,
+        "stderr": "",
+        "timed_out": false
+      },
+      "validation_errors": [
+        "pair_status",
+        "primary_status",
+        "secondary_status"
+      ]
+    },
+    "selection": {
+      "selected_lane": null
+    }
+  },
+  "pristine_verification": {
+    "clean_after_test": true,
+    "identity": {
+      "commit": "df476048d023ff868cd45b35ee47f5fb0ca2b25a",
+      "package_lock_sha256": null,
+      "tree": "21d1b1115ab955f499ca0de32b8819b936775dd9"
+    },
+    "outcome": {
+      "command": "docker run --rm --user 501:20 --env HOME=/tmp --workdir /workspace --mount type=bind,src=/var/folders/d8/vbnhwv5d79g5xdg6ddpw_n7m0000gn/T/rp-portable-quality-a5c9a85c-r26cm8rt/pristine,dst=/workspace sha256:9be410e06dadc1794f44aa4c0fd107a7ecb2edb5cb6bcc6a71c7888caf3cfa12 sh -lc 'npm install --no-package-lock --no-audit --no-fund && npm test'",
+      "duration_seconds": 41.625,
+      "exit_code": 0,
+      "stderr": "npm warn deprecated glob@10.5.0: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me\nnpm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:\nnpm warn allow-scripts   unrs-resolver@1.12.2 (postinstall: node postinstall.js)\nnpm warn allow-scripts\nnpm warn allow-scripts Run `npm approve-scripts --allow-scripts-pending` to review, or `npm approve-scripts <pkg>` to allow.\nnpm notice\nnpm notice New major version of npm available! 11.16.0 -> 12.0.1\nnpm notice Changelog: https://github.com/npm/cli/releases/tag/v12.0.1\nnpm notice To update run: npm install -g npm@12.0.1\nnpm notice\n",
+      "stdout": "\nadded 616 packages in 34s\n\n> p-limit@7.3.1 test\n> xo && ava && tsd\n\n\n  scripts/benchmarker.js:3:1\n  \u26a0  3:1  Unexpected todo comment: TODO: I will move this to a proper....  no-warning-comments\n\n  1 warning\n\n\n  \u2714 throws on invalid concurrency argument\n  \u2714 clearQueue\n  \u2714 accepts additional arguments\n  \u2714 continues after sync throw\n  \u2714 runs all tasks asynchronously\n  \u2714 non-promise returning function\n  \u2714 map accepts an iterable (set)\n  \u2714 map accepts an iterable (array iterator)\n  \u2714 map\n  \u2714 propagates async execution context properly\n  \u2714 shared context with a limited provider helper\n  \u2714 map passes index and preserves order with concurrency\n  \u2714 map works when detached from the limit\n  \u2714 clearQueue rejects pending promises when enabled\n  \u2714 accepts options object (107ms)\n  \u2714 does not ignore errors (112ms)\n  \u2714 change concurrency to bigger value (157ms)\n  \u2714 change concurrency to smaller value (214ms)\n  \u2714 concurrency: 1 (609ms)\n  \u2714 concurrency: 4 (2.2s)\n  \u2714 limitFunction() (2.2s)\n  \u2714 activeCount and pendingCount properties (3s)\n  \u2500\n\n  22 tests passed\n",
+      "timed_out": false
+    }
+  },
+  "provenance": {
+    "harness_sha256": "dd60a3861a3c3cd4deb1eda26800355ce64acd731b53c2a14c10f073ce7473a3",
+    "max_context_bytes": 1048576,
+    "node_image": {
+      "image_id": "sha256:9be410e06dadc1794f44aa4c0fd107a7ecb2edb5cb6bcc6a71c7888caf3cfa12",
+      "repo_digest": "node@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d",
+      "requested": "node:24-bookworm-slim"
+    },
+    "node_version": "v24.18.0",
+    "npm_version": "11.16.0",
+    "opencode_version": "1.18.4",
+    "oracle": {
+      "credential_present": true,
+      "credential_source": "host_env:OPENCODE_API_KEY",
+      "endpoint_identity": {
+        "host": "opencode.ai",
+        "path": "/zen/go/v1/chat/completions",
+        "port": 443,
+        "query_present": false,
+        "scheme": "https",
+        "source": "explicit_harness_environment"
+      },
+      "implementation_model": "opencode-go/deepseek-v4-flash",
+      "primary_model": "deepseek-v4-flash",
+      "secondary_model": "deepseek-v4-flash"
+    },
+    "portable_image": {
+      "image_id": "sha256:c78196d4081619bd89009e777b565b9bc8a78b69a7edaf0f7768a4a15ff97159",
+      "repo_digest": null,
+      "requested": "repoprompt-headless:portable-smoke"
+    },
+    "portable_repository": {
+      "after_dirty_worktree_fingerprint": "992e7a05de1318ad18a9039d03661608d6412158307cdbfa1ca37713a685172a",
+      "dirty_worktree_fingerprint": "992e7a05de1318ad18a9039d03661608d6412158307cdbfa1ca37713a685172a",
+      "head": "d2933839a17aa6ceecfc79cfc498df2f886171b2",
+      "preserved": true
+    },
+    "probe_sha256": "5aee09a37846ef90ec6b8a4f83b29d87f9dd56985a40bf679316a3ed60ae2120",
+    "timeouts": {
+      "application_seconds": 900.0,
+      "provider_seconds": 120,
+      "stdio_seconds": 300.0,
+      "test_seconds": 600.0
+    }
+  },
+  "review": {
+    "agreement": {
+      "acceptance_agreement": false,
+      "verdict_agreement": false
+    },
+    "phase": {
+      "status": "skipped"
+    },
+    "primary": {},
+    "secondary": {}
+  },
+  "run": {
+    "attributed_change": "Measurement harness only; choose npm install --no-package-lock because the pinned fixture has no lockfile",
+    "candidate_id": "baseline",
+    "completed_at": "2026-07-24T06:05:22.671379+00:00",
+    "iteration": 0,
+    "label": "baseline-retry-lockfile-fixture",
+    "retained_workspace": "/var/folders/d8/vbnhwv5d79g5xdg6ddpw_n7m0000gn/T/rp-portable-quality-a5c9a85c-r26cm8rt",
+    "run_id": "a5c9a85c-41be-4726-9b8c-12183502f629",
+    "started_at": "2026-07-24T06:04:39.044028+00:00"
+  },
+  "schema_version": 1,
+  "score": {
+    "end_to_end_pass": false,
+    "gates": {
+      "application_scope": false,
+      "npm_test": false,
+      "plan_selection": false,
+      "plan_transport": false,
+      "provenance_isolation": true,
+      "review_acceptance": false,
+      "review_transport": false,
+      "review_verdict_agreement": false,
+      "static_contract": false
+    },
+    "maximum": 100,
+    "points": 10
+  },
+  "verification": {
+    "npm_test": {
+      "exit_code": null
+    },
+    "semantic_probe": {
+      "passed": false,
+      "passed_count": 0
+    },
+    "static_contract": {}
+  }
+}

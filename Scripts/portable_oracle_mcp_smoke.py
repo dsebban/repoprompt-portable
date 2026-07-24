@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import select
+from dataclasses import dataclass
 import subprocess
 import sys
 import tempfile
@@ -99,10 +100,15 @@ def rpc_result(response: dict[str, Any], label: str) -> dict[str, Any]:
 	return result
 
 
-def tool_json(client: StdioMCPClient, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+@dataclass(frozen=True)
+class ToolJSONOutcome:
+	value: dict[str, Any]
+	is_error: bool
+	raw_result: dict[str, Any]
+
+
+def tool_json_outcome(client: StdioMCPClient, name: str, arguments: dict[str, Any]) -> ToolJSONOutcome:
 	result = rpc_result(client.request("tools/call", {"name": name, "arguments": arguments}), name)
-	if result.get("isError") is True:
-		raise AssertionError(f"{name} returned an MCP tool error: {result}")
 	content = result.get("content")
 	if not isinstance(content, list):
 		raise AssertionError(f"{name} content is not an array")
@@ -115,7 +121,14 @@ def tool_json(client: StdioMCPClient, name: str, arguments: dict[str, Any]) -> d
 		raise AssertionError(f"{name} text content is not JSON") from error
 	if not isinstance(value, dict):
 		raise AssertionError(f"{name} JSON result is not an object")
-	return value
+	return ToolJSONOutcome(value=value, is_error=result.get("isError") is True, raw_result=result)
+
+
+def tool_json(client: StdioMCPClient, name: str, arguments: dict[str, Any]) -> dict[str, Any]:
+	outcome = tool_json_outcome(client, name, arguments)
+	if outcome.is_error:
+		raise AssertionError(f"{name} returned an MCP tool error: {outcome.raw_result}")
+	return outcome.value
 
 
 def nested_keys(value: Any) -> set[str]:
@@ -158,10 +171,42 @@ def run_smoke(client: StdioMCPClient) -> None:
 	})
 	assert built.get("ok") is True, built
 	assert built.get("status") == "context_built", built
+	assert built.get("response_type") == "clarify", built
 	workspace = built.get("workspace_context")
 	assert isinstance(workspace, dict), built
 	assert FIXTURE_SENTINEL in str(workspace.get("content", "")), workspace
-	assert "oracle_results" not in built, built
+	oracle_fields = {
+		"response", "error", "pair_status", "oracle_pair_id", "oracle_decision_policy",
+		"model_raw_id", "oracle_results", "chat_id", "oracle_export_path", "winner", "synthesis",
+	}
+	assert nested_keys(built).isdisjoint(oracle_fields), built
+
+	plan = tool_json(client, "context_builder", {
+		"instructions": "Plan around the selected fixture sentinel.",
+		"response_type": "plan",
+	})
+	assert plan.get("ok") is True, plan
+	assert plan.get("status") == "response_generated", plan
+	assert plan.get("response_type") == "plan", plan
+	assert plan.get("prompt") == "Plan around the selected fixture sentinel.", plan
+	assert plan.get("pair_status") == "completed", plan
+	assert plan.get("model_raw_id") == "portable-primary-model", plan
+	plan_results = plan.get("oracle_results")
+	assert isinstance(plan_results, dict), plan
+	plan_primary = plan_results.get("primary")
+	plan_secondary = plan_results.get("secondary")
+	assert isinstance(plan_primary, dict) and isinstance(plan_secondary, dict), plan_results
+	assert plan_primary.get("oracle_lane") == "primary" and plan_primary.get("status") == "completed", plan_primary
+	assert plan_secondary.get("oracle_lane") == "secondary" and plan_secondary.get("status") == "completed", plan_secondary
+	plan_primary_response = plan_primary.get("response")
+	plan_secondary_response = plan_secondary.get("response")
+	assert isinstance(plan_primary_response, str) and "lane=primary" in plan_primary_response, plan_primary
+	assert isinstance(plan_secondary_response, str) and "lane=secondary" in plan_secondary_response, plan_secondary
+	assert "sentinel=true" in plan_primary_response and "sentinel=true" in plan_secondary_response
+	assert plan.get("response") == plan_primary_response, plan
+	assert plan.get("response") != plan_secondary_response, plan
+	forbidden = {"chat_id", "new_chat", "oracle_export_path", "winner", "synthesis"}
+	assert nested_keys(plan).isdisjoint(forbidden), plan
 
 	oracle = tool_json(client, "oracle_send", {
 		"message": "Review the selected fixture sentinel.",
@@ -185,7 +230,8 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert "sentinel=true" in primary_response and "sentinel=true" in secondary_response
 	assert oracle.get("response") == primary_response, oracle
 	assert oracle.get("response") != secondary_response, oracle
-	forbidden = {"winner", "synthesis", "placeholder"}
+	assert {"response_type", "prompt", "status"}.isdisjoint(oracle), oracle
+	forbidden = {"chat_id", "new_chat", "oracle_export_path", "winner", "synthesis", "placeholder"}
 	assert nested_keys(oracle).isdisjoint(forbidden), oracle
 	assert "placeholder" not in json.dumps(oracle, sort_keys=True).lower(), oracle
 

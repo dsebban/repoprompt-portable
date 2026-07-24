@@ -161,10 +161,14 @@ public actor HeadlessToolCatalog {
 			),
 			Self.tool(
 				name: "context_builder",
-				description: "Deterministically assemble the current explicit file and slice selection without provider work.",
+				description: "Assemble the current explicit file and slice selection locally, or send it to the configured Oracle provider for plan or review generation.",
 				properties: [
-					"instructions": Self.stringSchema(description: "Required local context-building instructions; returned unchanged after trimming."),
-					"response_type": Self.stringSchema(description: "Optional compatibility value; only clarify is supported."),
+					"instructions": Self.stringSchema(description: "Required context-building or generation instructions; returned unchanged after trimming."),
+					"response_type": .object([
+						"type": .string("string"),
+						"description": .string("clarify builds context locally; plan and review invoke the configured Oracle provider."),
+						"enum": .array([.string("clarify"), .string("plan"), .string("review")])
+					]),
 					"max_context_bytes": .object([
 						"type": .string("integer"),
 						"minimum": .int(HeadlessWorkspaceContextBuilder.minimumMaximumBytes),
@@ -173,7 +177,8 @@ public actor HeadlessToolCatalog {
 				],
 				required: ["instructions"],
 				additionalProperties: false,
-				idempotent: true
+				idempotent: false,
+				openWorld: true
 			),
 			Self.tool(
 				name: "oracle_send",
@@ -445,21 +450,28 @@ public actor HeadlessToolCatalog {
 		guard instructions.utf8.count <= HeadlessOracleWorkflow.maximumRequestBytes else {
 			throw HeadlessToolError("context_builder instructions exceed 65536 UTF-8 bytes.", code: "invalid_params")
 		}
-		if let value = args["response_type"] {
-			guard value.stringValue == "clarify" else {
-				throw HeadlessToolError("context_builder response_type must be `clarify`; provider-generating modes are unsupported.", code: "invalid_params")
-			}
-		}
+		let responseType = try builderResponseType(args["response_type"])
 		let maximumBytes = try contextMaximumBytes(args["max_context_bytes"])
-		let selection = await session.selectionStore.snapshot(tabID: nil)
-		let context = contextBuilder.build(selection: selection, maximumBytes: maximumBytes)
-		return try jsonResult([
-			"ok": .bool(true),
-			"status": .string("context_built"),
-			"response_type": .string("clarify"),
-			"prompt": .string(instructions),
-			"workspace_context": contextJSON(context)
-		])
+
+		switch responseType {
+		case .clarify:
+			let selection = await session.selectionStore.snapshot(tabID: nil)
+			let context = contextBuilder.build(selection: selection, maximumBytes: maximumBytes)
+			return try jsonResult([
+				"ok": .bool(true),
+				"status": .string("context_built"),
+				"response_type": .string("clarify"),
+				"prompt": .string(instructions),
+				"workspace_context": contextJSON(context)
+			])
+		case .generated(let mode):
+			let (context, result) = try await executeOracle(mode: mode, request: instructions, maximumBytes: maximumBytes)
+			var object = pairJSON(result, context: context)
+			object["response_type"] = .string(mode.rawValue)
+			object["prompt"] = .string(instructions)
+			object["status"] = .string(result.primary.status == .completed ? "response_generated" : "response_failed")
+			return try jsonResult(object)
+		}
 	}
 
 	private func oracleSend(_ args: [String: Value]) async throws -> CallTool.Result {
@@ -478,19 +490,37 @@ public actor HeadlessToolCatalog {
 			mode = .chat
 		}
 		let maximumBytes = try contextMaximumBytes(args["max_context_bytes"])
+		let (context, result) = try await executeOracle(mode: mode, request: message, maximumBytes: maximumBytes)
+		return try jsonResult(pairJSON(result, context: context))
+	}
+
+	private func builderResponseType(_ value: Value?) throws -> BuilderResponseType {
+		guard let value else { return .clarify }
+		switch value.stringValue {
+		case "clarify": return .clarify
+		case "plan": return .generated(.plan)
+		case "review": return .generated(.review)
+		default:
+			throw HeadlessToolError("context_builder response_type must be clarify, plan, or review.", code: "invalid_params")
+		}
+	}
+
+	private func executeOracle(
+		mode: HeadlessOracleMode,
+		request: String,
+		maximumBytes: Int
+	) async throws -> (HeadlessWorkspaceContext, HeadlessOraclePairResult) {
 		guard let oracleWorkflow else {
 			throw HeadlessToolError("Oracle is not configured. Set the required REPOPROMPT_ORACLE_* environment variables.", code: "oracle_not_configured")
 		}
-
 		let selection = await session.selectionStore.snapshot(tabID: nil)
 		let context = contextBuilder.build(selection: selection, maximumBytes: maximumBytes)
-		let result: HeadlessOraclePairResult
 		do {
-			result = try await oracleWorkflow.execute(mode: mode, request: message, context: context)
+			let result = try await oracleWorkflow.execute(mode: mode, request: request, context: context)
+			return (context, result)
 		} catch let error as HeadlessOracleWorkflowError {
 			throw HeadlessToolError(error.message, code: error.code)
 		}
-		return try jsonResult(pairJSON(result, context: context))
 	}
 
 	private func fileSearch(_ args: [String: Value]) async throws -> CallTool.Result {
@@ -921,6 +951,11 @@ public actor HeadlessToolCatalog {
 			)
 		)
 	}
+}
+
+private enum BuilderResponseType {
+	case clarify
+	case generated(HeadlessOracleMode)
 }
 
 private struct HeadlessToolError: Error, Sendable {

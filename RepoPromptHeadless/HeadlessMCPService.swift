@@ -32,7 +32,7 @@ public struct HeadlessMCPService: Sendable {
 			name: "RepoPrompt Headless",
 			version: "0.1.0",
 			title: "RepoPrompt Headless",
-			instructions: "RepoPrompt Headless exposes read-only workspace tools, deterministic selected-file context assembly, and optional mandatory two-lane Oracle requests over stdio.",
+			instructions: "RepoPrompt Headless exposes read-only workspace tools and selected-file context assembly over stdio. context_builder clarify stays local; context_builder plan/review and oracle_send disclose the rendered selected context to the configured provider in mandatory two-lane requests.",
 			capabilities: .init(tools: .init(listChanged: false)),
 			configuration: .default
 		)

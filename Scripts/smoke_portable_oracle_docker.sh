@@ -92,6 +92,54 @@ python3 "$REPO_ROOT/Scripts/portable_oracle_mcp_smoke.py" \
 		--no-persist \
 		--root /workspace
 
+CLI_STDOUT="$FIXTURE_DIR/cli.stdout"
+CLI_STDERR="$FIXTURE_DIR/cli.stderr"
+if docker run --rm \
+	--entrypoint /usr/local/bin/repoprompt-portable-cli \
+	--mount "type=bind,src=$FIXTURE_DIR,dst=/workspace,readonly" \
+	"$IMAGE" \
+	--root /workspace \
+	-e 'manage_selection {"op":"set","mode":"full","paths":["fixture.txt"]}' \
+	-e 'context_builder {"instructions":"Assemble the selected fixture.","response_type":"clarify"}' \
+	>"$CLI_STDOUT" 2>"$CLI_STDERR"; then
+	:
+else
+	cli_status=$?
+	echo "installed portable CLI exited $cli_status" >&2
+	python3 - "$CLI_STDERR" <<'PY' >&2
+import pathlib
+import sys
+print(pathlib.Path(sys.argv[1]).read_text())
+PY
+	exit "$cli_status"
+fi
+
+if [[ -s "$CLI_STDERR" ]]; then
+	echo "installed portable CLI wrote to stderr:" >&2
+	python3 - "$CLI_STDERR" <<'PY' >&2
+import pathlib
+import sys
+print(pathlib.Path(sys.argv[1]).read_text())
+PY
+	exit 1
+fi
+
+python3 - "$CLI_STDOUT" <<'PY'
+import json
+import pathlib
+import sys
+
+lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
+assert len(lines) == 2 and all(lines), lines
+rows = [json.loads(line) for line in lines]
+assert rows[0]["selection"]["selected_paths"] == ["fixture.txt"], rows[0]
+assert rows[1]["ok"] is True, rows[1]
+assert rows[1]["status"] == "context_built", rows[1]
+assert rows[1]["response_type"] == "clarify", rows[1]
+assert "PORTABLE_ORACLE_FIXTURE_SENTINEL" in rows[1]["workspace_context"]["content"], rows[1]
+print("installed portable CLI clarify smoke passed")
+PY
+
 COUNTERS_JSON="$(docker exec -i "$FIXTURE_CONTAINER" python3 - "$TOKEN" <<'PY'
 import sys
 import urllib.request
@@ -109,16 +157,16 @@ import os
 
 counters = json.loads(os.environ["COUNTERS_JSON"])
 expected = {
-	"total_requests": 2,
-	"primary_requests": 1,
-	"secondary_requests": 1,
-	"completed_pairs": 1,
+	"total_requests": 4,
+	"primary_requests": 2,
+	"secondary_requests": 2,
+	"completed_pairs": 2,
 	"barrier_timeouts": 0,
 	"authorization_failures": 0,
 	"invalid_requests": 0,
 	"duplicate_lane_requests": 0,
 	"prompt_mismatches": 0,
-	"unique_prompt_hashes": 1,
+	"unique_prompt_hashes": 2,
 	"active_pairs": 0,
 }
 assert counters == expected, {"expected": expected, "actual": counters}

@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "correction_type": "score_recalculation",
+  "correction_of": {
+    "artifact": "prompt-exports/portable-plan-review-artifacts/iteration-01.json",
+    "artifact_sha256": "2851616de94325cfd0c4a2b3196d68b4c0fe829e8b0450134ff21378e3abc9d3",
+    "run_id": "8ab4e2b7-8bad-4550-96c0-c6ee58bf03d6",
+    "iteration": 1
+  },
+  "attributed_change": "Recompute quality points after the portable worktree preservation gate changes from true to false.",
+  "reason": "The original artifact correctly recorded provenance_isolation=false but retained the 10 provenance points calculated before the final fingerprint comparison.",
+  "original_score": 67,
+  "corrected_score": 57,
+  "maximum": 100,
+  "changed_gate": "provenance_isolation",
+  "gate_value": false,
+  "model_results_unchanged": true,
+  "original_artifact_unchanged": true,
+  "scoreboard_history_unchanged": true,
+  "verification": {
+    "command": "python3 -m py_compile benchmarks/run_portable_benchmark.py Scripts/portable_oracle_mcp_smoke.py && node --check benchmarks/p_limit_abortsignal_probe.mjs && python3 -m unittest benchmarks/test_run_portable_benchmark.py",
+    "exit_code": 0,
+    "tests": 14
+  }
+}
