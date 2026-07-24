@@ -40,25 +40,43 @@ long-running HTTP server; the app speaks MCP over stdin/stdout. See `README.md` 
 
 ### Keeping Docker running (no systemd)
 - This VM's init is `tini`, so `systemctl`/`service` do not work. Start Docker with the
-  idempotent helper `ensure-docker` (installed at `/usr/local/bin/ensure-docker`): it starts
-  `dockerd` detached if needed, waits for readiness, and relaxes `/var/run/docker.sock` perms.
-  It is best-effort and always exits 0. The startup update script and `~/.bashrc` both call it,
-  so Docker is normally already up.
+  idempotent helper `Scripts/ensure-docker.sh` (install to `/usr/local/bin/ensure-docker`):
+  it starts `dockerd` detached if needed, waits for readiness, and relaxes
+  `/var/run/docker.sock` perms. It is best-effort and always exits 0.
+- Install once per VM: `sudo cp Scripts/ensure-docker.sh /usr/local/bin/ensure-docker && sudo chmod +x /usr/local/bin/ensure-docker`,
+  then call `ensure-docker` from the update script and/or `~/.bashrc`.
 - `dockerd` here must use the `fuse-overlayfs` storage driver (already set in
   `/etc/docker/daemon.json`).
 
 ### repoprompt-portable as a Cursor MCP server
-- Registered in `~/.cursor/mcp.json` as a stdio server. Its `command` is the wrapper
-  `/usr/local/bin/repoprompt-portable-mcp`, which calls `ensure-docker`, builds the
-  `repoprompt-headless:portable` image from `Dockerfile.headless` if it is missing, then
-  `exec`s `docker run --rm -i ... repoprompt-headless:portable --no-persist --root /workspace`.
-  This makes the MCP server self-healing: Docker is guaranteed running whenever Cursor launches it.
-- Oracle config for `oracle_send`: the `env` block in `~/.cursor/mcp.json` sets `OPENCODE_API_KEY`
-  (OpenCode Go defaults: both lanes `deepseek-v4-flash`). For a custom provider, add
-  `REPOPROMPT_ORACLE_ENDPOINT` + `REPOPROMPT_ORACLE_PRIMARY_MODEL` +
-  `REPOPROMPT_ORACLE_SECONDARY_MODEL` (all three) to that `env` block; optional
+- Register in `~/.cursor/mcp.json` as a stdio server whose `command` is
+  `/usr/local/bin/repoprompt-portable-mcp` (from `Scripts/repoprompt-portable-mcp.sh`).
+  Install: `sudo cp Scripts/repoprompt-portable-mcp.sh /usr/local/bin/repoprompt-portable-mcp && sudo chmod +x /usr/local/bin/repoprompt-portable-mcp`.
+- The wrapper prefers a native `repoprompt-headless` binary (`/usr/local/bin` or `.build/...`),
+  otherwise calls `ensure-docker`, builds `repoprompt-headless:portable` from
+  `Dockerfile.headless` if missing, then `exec`s `docker run --rm -i ... --no-persist --root /workspace`.
+  Set `RP_PORTABLE_FORCE_DOCKER=1` to skip the native preference.
+- Example `~/.cursor/mcp.json`:
+  ```json
+  {
+    "mcpServers": {
+      "repoprompt-portable": {
+        "command": "/usr/local/bin/repoprompt-portable-mcp",
+        "args": [],
+        "env": {
+          "OPENCODE_API_KEY": "${env:OPENCODE_API_KEY}",
+          "RP_PORTABLE_ROOT": "/workspace"
+        }
+      }
+    }
+  }
+  ```
+- Oracle config for `oracle_send`: set `OPENCODE_API_KEY` (OpenCode Go defaults: both lanes
+  `deepseek-v4-flash`), or set all three of `REPOPROMPT_ORACLE_ENDPOINT` +
+  `REPOPROMPT_ORACLE_PRIMARY_MODEL` + `REPOPROMPT_ORACLE_SECONDARY_MODEL`. Optional:
   `REPOPROMPT_ORACLE_API_KEY` / `REPOPROMPT_ORACLE_TIMEOUT_SECONDS`. With none set,
   local/selection tools still work and `oracle_send` returns `oracle_not_configured`.
 - Verify the Cursor-registered server end to end (initialize + list tools) with:
   `python3 Scripts/list_cursor_mcp_tools.py` (defaults to `~/.cursor/mcp.json`, server
-  `repoprompt-portable`).
+  `repoprompt-portable`). Retry a live dual-lane call with
+  `python3 Scripts/retry_portable_oracle.py`.

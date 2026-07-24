@@ -122,7 +122,11 @@ def main() -> int:
     server = load_server(args.config, args.server)
     argv = build_command(server)
     env = dict(os.environ)
-    env.update({str(k): str(v) for k, v in server.get("env", {}).items()})
+    for key, value in server.get("env", {}).items():
+        text = str(value)
+        if text.startswith("${env:") and text.endswith("}"):
+            text = os.environ.get(text[len("${env:") : -1], "")
+        env[str(key)] = text
 
     print(f"Launching MCP server {args.server!r}: {' '.join(argv)}")
     client = StdioMCPClient(argv, env, args.timeout)
