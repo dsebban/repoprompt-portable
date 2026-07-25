@@ -4,6 +4,13 @@ Portable, UI-free RepoPrompt context building and dual-Oracle MCP for Linux and 
 
 The image contains both `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL command runner. It renders only the caller's explicit file/slice selection and sends mandatory concurrent Primary and Secondary requests for provider-backed work. It has no Apple UI dependency.
 
+Third-party coding agents can install or load the repository skill at
+`.agents/skills/repoprompt-portable-workflows/SKILL.md`. It includes transport
+routing, CLI and MCP references, plan/investigation/review recipes, and the
+portable-vs-CE capability boundary. See
+[Third-party agent integration](docs/third-party-agent-integration.md) for
+installation and capability negotiation.
+
 Portable software `0.2.0` advertises tool-schema version `1.0.0` on every tool input schema.
 
 ## Tool contract
