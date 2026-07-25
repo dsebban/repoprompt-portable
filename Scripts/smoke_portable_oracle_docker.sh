@@ -3,19 +3,28 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 IMAGE="${RP_PORTABLE_IMAGE:-repoprompt-headless:portable-smoke}"
-PYTHON_IMAGE="${RP_PORTABLE_PYTHON_IMAGE:-python:3.12-alpine}"
+PLATFORM="${RP_PORTABLE_PLATFORM:-}"
+PYTHON_IMAGE="${RP_PORTABLE_PYTHON_IMAGE:-python:3.12-alpine@sha256:6d43704baacd1bfbe7c295d7f13079d5d8104ed33568873133f8fc69980419df}"
 SKIP_BUILD="${RP_PORTABLE_SKIP_BUILD:-0}"
 SMOKE_TIMEOUT="${RP_PORTABLE_SMOKE_TIMEOUT_SECONDS:-30}"
 TOKEN="portable-oracle-smoke-token"
 NETWORK="rp-portable-oracle-${RANDOM}-$$"
 FIXTURE_CONTAINER="rp-portable-oracle-fixture-${RANDOM}-$$"
 FIXTURE_DIR=""
+EXPORT_DIR=""
 
 cleanup() {
 	docker rm -f "$FIXTURE_CONTAINER" >/dev/null 2>&1 || true
 	docker network rm "$NETWORK" >/dev/null 2>&1 || true
 	if [[ -n "$FIXTURE_DIR" && -d "$FIXTURE_DIR" ]]; then
 		python3 - "$FIXTURE_DIR" <<'PY'
+import shutil
+import sys
+shutil.rmtree(sys.argv[1], ignore_errors=True)
+PY
+	fi
+	if [[ -n "$EXPORT_DIR" && -d "$EXPORT_DIR" ]]; then
+		python3 - "$EXPORT_DIR" <<'PY'
 import shutil
 import sys
 shutil.rmtree(sys.argv[1], ignore_errors=True)
@@ -32,16 +41,48 @@ python3 -c 'import sys; raise SystemExit(0 if sys.flags.optimize == 0 else 1)' \
 	|| { echo "PYTHONOPTIMIZE must be disabled for smoke assertions" >&2; exit 1; }
 docker info >/dev/null
 
+PLATFORM_ARGS=()
+if [[ -n "$PLATFORM" ]]; then
+	PLATFORM_ARGS=(--platform "$PLATFORM")
+fi
+HARDENED_ARGS=(
+	--read-only
+	--cap-drop ALL
+	--security-opt no-new-privileges
+	--pids-limit 256
+	--tmpfs /tmp:rw,nosuid,nodev,size=64m
+)
+hardened_run() {
+	docker run --rm "${PLATFORM_ARGS[@]}" "${HARDENED_ARGS[@]}" "$@"
+}
+
+if grep -Eiq '"apiKey"[[:space:]]*:|sk-[[:alnum:]]{20,}' "$REPO_ROOT/opencode.docker.json"; then
+	echo "opencode.docker.json must not contain embedded credentials" >&2
+	exit 1
+fi
+
 if [[ "$SKIP_BUILD" != "1" ]]; then
 	docker build -f "$REPO_ROOT/Dockerfile.headless" -t "$IMAGE" "$REPO_ROOT"
 fi
 
 docker image inspect "$IMAGE" >/dev/null
-docker run --rm --entrypoint opencode "$IMAGE" --version
-docker run --rm --entrypoint opencode "$IMAGE" mcp list --pure | grep -q 'repoprompt-portable.*connected'
+hardened_run --network none --entrypoint /bin/sh "$IMAGE" -c '
+	set -eu
+	test "$(id -u)" = 10001
+	test "$(id -g)" = 10001
+	test -x /usr/local/bin/repoprompt-headless
+	test -x /usr/local/bin/repoprompt-portable-cli
+	/usr/local/bin/repoprompt-portable-cli --help >/dev/null
+	test -r /etc/opencode/opencode.json
+	! grep -Eiq "\"apiKey\"[[:space:]]*:|sk-[[:alnum:]]{20,}" /etc/opencode/opencode.json
+'
+hardened_run --network none --env HOME=/tmp --entrypoint opencode "$IMAGE" --version
+hardened_run --network none --env HOME=/tmp --entrypoint opencode "$IMAGE" mcp list --pure | grep -q 'repoprompt-portable.*connected'
 docker network create "$NETWORK" >/dev/null
 
 docker run -d \
+	"${HARDENED_ARGS[@]}" \
+	--user 65534:65534 \
 	--name "$FIXTURE_CONTAINER" \
 	--network "$NETWORK" \
 	--network-alias portable-oracle-fixture \
@@ -81,20 +122,23 @@ python3 "$REPO_ROOT/Scripts/portable_oracle_mcp_smoke.py" \
 	--timeout-seconds "$SMOKE_TIMEOUT" \
 	-- \
 	docker run --rm -i \
+		"${PLATFORM_ARGS[@]}" \
+		"${HARDENED_ARGS[@]}" \
 		--network "$NETWORK" \
 		--mount "type=bind,src=$FIXTURE_DIR,dst=/workspace,readonly" \
 		--env "REPOPROMPT_ORACLE_ENDPOINT=http://portable-oracle-fixture:8080/v1/chat/completions" \
-		--env "REPOPROMPT_ORACLE_PRIMARY_MODEL=portable-primary-model" \
-		--env "REPOPROMPT_ORACLE_SECONDARY_MODEL=portable-secondary-model" \
+		--env "REPOPROMPT_ORACLE_PRIMARY_MODEL=gpt-5.6-sol" \
+		--env "REPOPROMPT_ORACLE_SECONDARY_MODEL=openrouter/team:gpt-5.6-sol[variant=secondary]" \
+		--env "REPOPROMPT_ORACLE_REASONING_EFFORT=xhigh" \
 		--env "REPOPROMPT_ORACLE_API_KEY=$TOKEN" \
-		--env "REPOPROMPT_ORACLE_TIMEOUT_SECONDS=15" \
+		--env "REPOPROMPT_ORACLE_TIMEOUT_SECONDS=2700" \
 		"$IMAGE" \
 		--no-persist \
 		--root /workspace
 
 CLI_STDOUT="$FIXTURE_DIR/cli.stdout"
 CLI_STDERR="$FIXTURE_DIR/cli.stderr"
-if docker run --rm \
+if hardened_run --network none \
 	--entrypoint /usr/local/bin/repoprompt-portable-cli \
 	--mount "type=bind,src=$FIXTURE_DIR,dst=/workspace,readonly" \
 	"$IMAGE" \
@@ -140,6 +184,70 @@ assert "PORTABLE_ORACLE_FIXTURE_SENTINEL" in rows[1]["workspace_context"]["conte
 print("installed portable CLI clarify smoke passed")
 PY
 
+EXPORT_DIR="$(mktemp -d "$REPO_ROOT/.build/portable-export-smoke.XXXXXX")"
+chmod 0700 "$EXPORT_DIR"
+MAPPED_STDOUT="$FIXTURE_DIR/mapped.stdout"
+MAPPED_STDERR="$FIXTURE_DIR/mapped.stderr"
+hardened_run --network none \
+	--user "$(id -u):$(id -g)" \
+	--env HOME=/tmp \
+	--entrypoint /usr/local/bin/repoprompt-portable-cli \
+	--mount "type=bind,src=$FIXTURE_DIR,dst=/workspace,readonly" \
+	--mount "type=bind,src=$EXPORT_DIR,dst=/output" \
+	"$IMAGE" \
+	--root /workspace \
+	--export-jsonl /output/result.jsonl \
+	-e 'manage_selection {"op":"set","mode":"full","paths":["fixture.txt"]}' \
+	-e 'context_builder {"instructions":"Assemble the selected fixture.","response_type":"clarify"}' \
+	>"$MAPPED_STDOUT" 2>"$MAPPED_STDERR"
+
+test ! -s "$MAPPED_STDERR"
+cmp "$MAPPED_STDOUT" "$EXPORT_DIR/result.jsonl"
+python3 - "$EXPORT_DIR/result.jsonl" "$(id -u)" "$(id -g)" <<'PY'
+import pathlib
+import stat
+import sys
+
+path = pathlib.Path(sys.argv[1])
+metadata = path.stat()
+assert stat.S_IMODE(metadata.st_mode) == 0o600, oct(stat.S_IMODE(metadata.st_mode))
+if sys.platform.startswith("linux"):
+	assert metadata.st_uid == int(sys.argv[2]), (metadata.st_uid, sys.argv[2])
+	assert metadata.st_gid == int(sys.argv[3]), (metadata.st_gid, sys.argv[3])
+PY
+
+before_hash="$(python3 - "$EXPORT_DIR/result.jsonl" <<'PY'
+import hashlib
+import pathlib
+import sys
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
+set +e
+hardened_run --network none \
+	--user "$(id -u):$(id -g)" \
+	--env HOME=/tmp \
+	--entrypoint /usr/local/bin/repoprompt-portable-cli \
+	--mount "type=bind,src=$FIXTURE_DIR,dst=/workspace,readonly" \
+	--mount "type=bind,src=$EXPORT_DIR,dst=/output" \
+	"$IMAGE" \
+	--root /workspace \
+	--export-jsonl /output/result.jsonl \
+	context_builder '{"instructions":"Do not overwrite.","response_type":"clarify"}' \
+	>/dev/null 2>"$MAPPED_STDERR"
+no_overwrite_status=$?
+set -e
+[[ "$no_overwrite_status" == "73" ]]
+after_hash="$(python3 - "$EXPORT_DIR/result.jsonl" <<'PY'
+import hashlib
+import pathlib
+import sys
+print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())
+PY
+)"
+[[ "$after_hash" == "$before_hash" ]]
+echo "mapped-user private JSONL export smoke passed"
+
 COUNTERS_JSON="$(docker exec -i "$FIXTURE_CONTAINER" python3 - "$TOKEN" <<'PY'
 import sys
 import urllib.request
@@ -157,10 +265,11 @@ import os
 
 counters = json.loads(os.environ["COUNTERS_JSON"])
 expected = {
-	"total_requests": 4,
-	"primary_requests": 2,
-	"secondary_requests": 2,
+	"total_requests": 6,
+	"primary_requests": 3,
+	"secondary_requests": 3,
 	"completed_pairs": 2,
+	"forced_error_requests": 2,
 	"barrier_timeouts": 0,
 	"authorization_failures": 0,
 	"invalid_requests": 0,

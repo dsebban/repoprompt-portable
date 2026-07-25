@@ -6,41 +6,557 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
-permissions:
-  contents: read
-  packages: write
+concurrency:
+  group: publish-container-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  OPENCODE_VERSION: "1.18.4"
 
 jobs:
-  publish:
+  preflight:
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    outputs:
+      image: ${{ steps.vars.outputs.image }}
+      contract_version: ${{ steps.vars.outputs.contract_version }}
+      schema_version: ${{ steps.vars.outputs.schema_version }}
+      image_version: ${{ steps.vars.outputs.image_version }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve immutable release inputs
+        id: vars
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          contract_version="$(sed -n 's/.*softwareVersion = "\([^"]*\)".*/\1/p' RepoPromptHeadless/PortableContract.swift)"
+          schema_version="$(sed -n 's/.*toolSchemaVersion = "\([^"]*\)".*/\1/p' RepoPromptHeadless/PortableContract.swift)"
+          test -n "$contract_version"
+          test -n "$schema_version"
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            [[ "$GITHUB_REF_NAME" == "v$contract_version" ]] || {
+              echo "tag $GITHUB_REF_NAME must equal PortableContract v$contract_version" >&2
+              exit 1
+            }
+            if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+              echo "GitHub release $GITHUB_REF_NAME already exists and is immutable" >&2
+              exit 1
+            fi
+            image_version="$contract_version"
+          else
+            image_version="${contract_version}-dev.${GITHUB_SHA:0:12}"
+          fi
+          {
+            echo "image=$image"
+            echo "contract_version=$contract_version"
+            echo "schema_version=$schema_version"
+            echo "image_version=$image_version"
+          } >> "$GITHUB_OUTPUT"
+      - name: Verify release source policy
+        run: python3 Scripts/verify_portable_release.py source --expected-version "${{ steps.vars.outputs.contract_version }}"
+      - name: Test release verifier
+        run: python3 Scripts/test_verify_portable_release.py
+      - name: Check script syntax
+        run: |
+          bash -n Scripts/smoke_portable_oracle_docker.sh
+          bash -n Scripts/smoke_portable_host_gateway.sh
+          python3 -m py_compile \
+            Scripts/portable_oracle_fixture_server.py \
+            Scripts/portable_oracle_mcp_smoke.py \
+            Scripts/verify_portable_release.py
+
+  swift-test:
+    needs: preflight
+    runs-on: ubuntu-24.04
+    container: swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build both executables
+        run: |
+          swift build --product repoprompt-headless
+          swift build --product repoprompt-portable-cli
+      - name: Test
+        run: swift test
+
+  candidate:
+    needs: [preflight, swift-test]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            arch: amd64
+          - platform: linux/arm64
+            arch: arm64
+    env:
+      IMAGE: ${{ needs.preflight.outputs.image }}
+      IMAGE_VERSION: ${{ needs.preflight.outputs.image_version }}
+      PLATFORM: ${{ matrix.platform }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
       - name: Log in to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      - name: Container metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=raw,value=latest,enable={{is_default_branch}}
-            type=sha
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-      - name: Build and publish
-        uses: docker/build-push-action@v6
+      - name: Build and push untagged platform candidate
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
           file: Dockerfile.headless
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: ${{ matrix.platform }}
+          outputs: type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.version=${{ env.IMAGE_VERSION }}
+          provenance: mode=max
+          sbom: true
+          cache-from: type=gha,scope=${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.arch }}
+      - name: Pull exact candidate digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          [[ "$DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]
+          docker pull --platform "$PLATFORM" "$IMAGE@$DIGEST"
+      - name: Hardened bridge smoke of exact digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RP_PORTABLE_IMAGE: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          RP_PORTABLE_PLATFORM: ${{ matrix.platform }}
+          RP_PORTABLE_SKIP_BUILD: "1"
+        run: bash Scripts/smoke_portable_oracle_docker.sh
+      - name: Verify exact image contents and labels
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          python3 Scripts/verify_portable_release.py image \
+            --image "$IMAGE@$DIGEST" \
+            --platform "$PLATFORM" \
+            --expected-revision "$GITHUB_SHA" \
+            --expected-version "$IMAGE_VERSION" \
+            --expected-opencode-version "$OPENCODE_VERSION"
+      - name: Authenticated Linux host-gateway smoke
+        if: matrix.arch == 'amd64'
+        env:
+          RP_PORTABLE_IMAGE: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          RP_PORTABLE_PLATFORM: ${{ matrix.platform }}
+          RP_PORTABLE_SKIP_BUILD: "1"
+        run: bash Scripts/smoke_portable_host_gateway.sh
+      - name: Prepare release artifact directory
+        run: mkdir -p out
+      - name: Generate platform SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0.24.0
+        with:
+          image: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          registry-username: ${{ github.actor }}
+          registry-password: ${{ secrets.GITHUB_TOKEN }}
+          format: spdx-json
+          output-file: out/repoprompt-portable-linux-${{ matrix.arch }}.spdx.json
+          upload-artifact: false
+          upload-release-assets: false
+      - name: Record verified platform metadata
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          config_digest="$(docker image inspect "$IMAGE@$DIGEST" --format '{{.Id}}')"
+          python3 - "$PLATFORM" "$DIGEST" "$config_digest" > out/platform.json <<'PY'
+          import json
+          import sys
+          print(json.dumps({"platform": sys.argv[1], "digest": sys.argv[2], "config_digest": sys.argv[3]}, sort_keys=True))
+          PY
+      - name: Create installable platform archive
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VERSION: ${{ needs.preflight.outputs.contract_version }}
+        run: |
+          set -euo pipefail
+          archive_tag="repoprompt-portable-archive:$ARCH"
+          archive="out/repoprompt-portable-v${VERSION}-linux-${ARCH}.docker.tar.gz"
+          docker tag "$IMAGE@$DIGEST" "$archive_tag"
+          docker save "$archive_tag" | gzip -n > "$archive"
+          config_digest="$(python3 -c 'import json; print(json.load(open("out/platform.json"))["config_digest"])')"
+          python3 Scripts/verify_portable_release.py archive \
+            --archive "$archive" \
+            --expected-config-digest "$config_digest" \
+            --expected-tag "$archive_tag"
+      - name: Upload verified candidate artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: candidate-linux-${{ matrix.arch }}
+          path: out/
+          if-no-files-found: error
+          retention-days: 7
+
+  manifest:
+    needs: [preflight, candidate]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.index.outputs.digest }}
+      candidate_ref: ${{ steps.index.outputs.candidate_ref }}
+    env:
+      IMAGE: ${{ needs.preflight.outputs.image }}
+      IMAGE_VERSION: ${{ needs.preflight.outputs.image_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download verified platform metadata
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: candidate-linux-*
+          path: dist
+      - name: Assemble candidate index from verified digests
+        id: index
+        run: |
+          set -euo pipefail
+          amd64="$(python3 -c 'import json; print(json.load(open("dist/candidate-linux-amd64/platform.json"))["digest"])')"
+          arm64="$(python3 -c 'import json; print(json.load(open("dist/candidate-linux-arm64/platform.json"))["digest"])')"
+          candidate_ref="$IMAGE:candidate-${GITHUB_SHA}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker buildx imagetools create --tag "$candidate_ref" "$IMAGE@$amd64" "$IMAGE@$arm64"
+          manifest_json="$(docker buildx imagetools inspect "$candidate_ref" --format '{{json .Manifest}}')"
+          digest="$(jq -er '.digest | select(test("^sha256:[0-9a-f]{64}$"))' <<<"$manifest_json")"
+          jq -e '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "amd64")' <<<"$manifest_json" >/dev/null
+          jq -e '.manifests[] | select(.platform.os == "linux" and .platform.architecture == "arm64")' <<<"$manifest_json" >/dev/null
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+          echo "candidate_ref=$candidate_ref" >> "$GITHUB_OUTPUT"
+          echo "candidate index: $IMAGE@$digest"
+      - name: Write immutable digest manifest
+        env:
+          INDEX_DIGEST: ${{ steps.index.outputs.digest }}
+          VERSION: ${{ needs.preflight.outputs.contract_version }}
+        run: |
+          mkdir -p release-metadata
+          python3 - "$IMAGE" "$INDEX_DIGEST" "$GITHUB_SHA" "$VERSION" > release-metadata/container-digests.json <<'PY'
+          import json
+          import pathlib
+          import sys
+          platforms = {}
+          for path in pathlib.Path("dist").glob("candidate-linux-*/platform.json"):
+              value = json.loads(path.read_text())
+              platforms[value.pop("platform")] = value
+          print(json.dumps({
+              "schema_version": 1,
+              "image": sys.argv[1],
+              "index_digest": sys.argv[2],
+              "source_revision": sys.argv[3],
+              "version": sys.argv[4],
+              "platforms": platforms,
+          }, indent=2, sort_keys=True))
+          PY
+          python3 Scripts/verify_portable_release.py metadata --metadata release-metadata/container-digests.json
+      - name: Hardened native smoke of candidate index digest
+        env:
+          RP_PORTABLE_IMAGE: ${{ env.IMAGE }}@${{ steps.index.outputs.digest }}
+          RP_PORTABLE_PLATFORM: linux/amd64
+          RP_PORTABLE_SKIP_BUILD: "1"
+        run: |
+          docker pull --platform linux/amd64 "$RP_PORTABLE_IMAGE"
+          bash Scripts/smoke_portable_oracle_docker.sh
+      - name: Upload immutable digest manifest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-metadata
+          path: release-metadata/
+          if-no-files-found: error
+          retention-days: 7
+
+  secure:
+    needs: [preflight, manifest]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ${{ needs.preflight.outputs.image }}
+      DIGEST: ${{ needs.manifest.outputs.digest }}
+    steps:
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+      - name: Keyless-sign exact candidate digest
+        run: cosign sign --yes "$IMAGE@$DIGEST"
+      - name: Attest exact candidate digest provenance
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ env.DIGEST }}
+          push-to-registry: true
+      - name: Verify signature and provenance before promotion
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/publish-container.yml@${{ github.ref }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cosign verify \
+            --certificate-identity "$CERTIFICATE_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$IMAGE@$DIGEST"
+          gh attestation verify "oci://$IMAGE@$DIGEST" \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/publish-container.yml"
+
+  promote:
+    if: ${{ always() && needs.preflight.result == 'success' && needs.manifest.result == 'success' && needs.secure.result == 'success' && (needs.release_assets.result == 'success' || needs.release_assets.result == 'skipped') }}
+    needs: [preflight, manifest, secure, release_assets]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ${{ needs.preflight.outputs.image }}
+      DIGEST: ${{ needs.manifest.outputs.digest }}
+      VERSION: ${{ needs.preflight.outputs.contract_version }}
+    steps:
+      - uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+      - name: Log in to GHCR
+        uses: docker/login-action@abd2ef45e78c5afb21d64d4ca52ee8550d9572c7 # v4.5.1
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+      - name: Promote only verified immutable digest
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/publish-container.yml@${{ github.ref }}
+        run: |
+          set -euo pipefail
+          digest_ref="$IMAGE@$DIGEST"
+          digest_of() {
+            docker buildx imagetools inspect "$1" --format '{{json .Manifest}}' | jq -er '.digest'
+          }
+          promote_immutable() {
+            local tag="$1" current=""
+            if current="$(digest_of "$IMAGE:$tag" 2>/dev/null)"; then
+              [[ "$current" == "$DIGEST" ]] || {
+                echo "immutable tag $tag already points to $current" >&2
+                exit 1
+              }
+            else
+              docker buildx imagetools create --tag "$IMAGE:$tag" "$digest_ref"
+            fi
+            [[ "$(digest_of "$IMAGE:$tag")" == "$DIGEST" ]]
+            cosign verify \
+              --certificate-identity "$CERTIFICATE_IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$IMAGE:$tag" >/dev/null
+            echo "promoted immutable $IMAGE:$tag -> $DIGEST"
+          }
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            promote_immutable "$GITHUB_REF_NAME"
+            promote_immutable "$VERSION"
+            promote_immutable "sha-$GITHUB_SHA"
+          elif [[ "$GITHUB_REF" == refs/heads/main ]]; then
+            promote_immutable "sha-$GITHUB_SHA"
+            docker buildx imagetools create --tag "$IMAGE:latest" "$digest_ref"
+            [[ "$(digest_of "$IMAGE:latest")" == "$DIGEST" ]]
+            cosign verify \
+              --certificate-identity "$CERTIFICATE_IDENTITY" \
+              --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+              "$IMAGE:latest" >/dev/null
+            echo "moved rollback tag $IMAGE:latest -> $DIGEST"
+          else
+            promote_immutable "sha-$GITHUB_SHA"
+          fi
+
+  release_assets:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [preflight, manifest, secure]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: read
+      id-token: write
+      attestations: write
+    env:
+      IMAGE: ${{ needs.preflight.outputs.image }}
+      DIGEST: ${{ needs.manifest.outputs.digest }}
+      VERSION: ${{ needs.preflight.outputs.contract_version }}
+      SCHEMA_VERSION: ${{ needs.preflight.outputs.schema_version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.0.6
+      - name: Download verified release inputs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: candidate-linux-*
+          path: dist
+      - name: Download immutable digest manifest
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: release-metadata
+          path: dist/release-metadata
+      - name: Assemble digest-pinned release assets
+        run: |
+          set -euo pipefail
+          mkdir release
+          cp dist/release-metadata/container-digests.json release/
+          python3 Scripts/verify_portable_release.py metadata \
+            --metadata release/container-digests.json \
+            --expected-image "$IMAGE" \
+            --expected-index-digest "$DIGEST" \
+            --expected-revision "$GITHUB_SHA" \
+            --expected-version "$VERSION"
+          find dist -type f \( -name '*.docker.tar.gz' -o -name '*.spdx.json' \) -exec cp {} release/ \;
+          sed "s|@@IMAGE@@|$IMAGE@$DIGEST|g" .github/release-assets/docker-compose.yml.in > release/docker-compose.yml
+          sed "s|@@IMAGE@@|$IMAGE@$DIGEST|g" .github/release-assets/run-hardened.sh.in > release/run-hardened.sh
+          sed \
+            -e "s|@@IMAGE@@|$IMAGE@$DIGEST|g" \
+            -e "s|@@VERSION@@|$VERSION|g" \
+            -e "s|@@SOFTWARE_VERSION@@|$VERSION|g" \
+            -e "s|@@SCHEMA_VERSION@@|$SCHEMA_VERSION|g" \
+            .github/release-assets/RELEASE_NOTES.md.in > release/RELEASE_NOTES.md
+          chmod 0755 release/run-hardened.sh
+          cp .github/release-assets/RELEASE_POLICY.txt release/
+          for arch in amd64 arm64; do
+            test -s "release/repoprompt-portable-v${VERSION}-linux-${arch}.docker.tar.gz"
+            sbom="release/repoprompt-portable-linux-${arch}.spdx.json"
+            test -s "$sbom"
+            python3 -m json.tool "$sbom" >/dev/null
+            grep -q 'SPDXRef-DOCUMENT' "$sbom"
+          done
+          if grep -R -E '@@(IMAGE|VERSION|SOFTWARE_VERSION|SCHEMA_VERSION)@@' release; then
+            echo "unresolved release asset placeholder" >&2
+            exit 1
+          fi
+          grep -F "$IMAGE@$DIGEST" release/docker-compose.yml release/run-hardened.sh release/RELEASE_NOTES.md
+          bash -n release/run-hardened.sh
+          docker compose -f release/docker-compose.yml config >/dev/null
+      - name: Load and verify both installable archives
+        run: |
+          set -euo pipefail
+          for arch in amd64 arm64; do
+            archive="release/repoprompt-portable-v${VERSION}-linux-${arch}.docker.tar.gz"
+            platform="linux/$arch"
+            local_tag="repoprompt-portable-archive:$arch"
+            config_digest="$(python3 - "$platform" <<'PY'
+          import json
+          import sys
+          value = json.load(open("release/container-digests.json"))
+          print(value["platforms"][sys.argv[1]]["config_digest"])
+          PY
+          )"
+            python3 Scripts/verify_portable_release.py archive \
+              --archive "$archive" \
+              --expected-config-digest "$config_digest" \
+              --expected-tag "$local_tag"
+            gzip -dc "$archive" | docker load
+            python3 Scripts/verify_portable_release.py image \
+              --image "$local_tag" \
+              --platform "$platform" \
+              --expected-revision "$GITHUB_SHA" \
+              --expected-version "$VERSION" \
+              --expected-opencode-version "$OPENCODE_VERSION"
+
+            smoke_dir="$(mktemp -d)"
+            mkdir "$smoke_dir/workspace" "$smoke_dir/output"
+            printf '%s\n' PORTABLE_RELEASE_ARCHIVE_SENTINEL > "$smoke_dir/workspace/fixture.txt"
+            docker run --rm --platform "$platform" \
+              --read-only \
+              --cap-drop ALL \
+              --security-opt no-new-privileges \
+              --pids-limit 256 \
+              --tmpfs /tmp:rw,nosuid,nodev,size=64m \
+              --network none \
+              --user "$(id -u):$(id -g)" \
+              --env HOME=/tmp \
+              --entrypoint /usr/local/bin/repoprompt-portable-cli \
+              --mount "type=bind,src=$smoke_dir/workspace,dst=/workspace,readonly" \
+              --mount "type=bind,src=$smoke_dir/output,dst=/output" \
+              "$local_tag" \
+              --root /workspace \
+              --export-jsonl /output/result.jsonl \
+              -e 'manage_selection {"op":"set","mode":"full","paths":["fixture.txt"]}' \
+              -e 'context_builder {"instructions":"Verify the archive fixture.","response_type":"clarify"}' \
+              > "$smoke_dir/stdout.jsonl"
+            cmp "$smoke_dir/stdout.jsonl" "$smoke_dir/output/result.jsonl"
+            test "$(stat -c '%a' "$smoke_dir/output/result.jsonl")" = 600
+            grep -q PORTABLE_RELEASE_ARCHIVE_SENTINEL "$smoke_dir/output/result.jsonl"
+          done
+      - name: Checksum and keyless-sign release assets
+        working-directory: release
+        env:
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/publish-container.yml@${{ github.ref }}
+        run: |
+          find . -maxdepth 1 -type f ! -name 'SHA256SUMS*' -printf '%f\n' | LC_ALL=C sort | xargs sha256sum > SHA256SUMS
+          sha256sum --check SHA256SUMS
+          cosign sign-blob --yes --bundle SHA256SUMS.sigstore.json SHA256SUMS
+          cosign verify-blob \
+            --bundle SHA256SUMS.sigstore.json \
+            --certificate-identity "$CERTIFICATE_IDENTITY" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            SHA256SUMS
+      - name: Attest downloadable release assets
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
+        with:
+          subject-checksums: release/SHA256SUMS
+      - name: Upload fully verified release assets
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: verified-release-assets
+          path: release/
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [preflight, promote, release_assets]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download fully verified release assets
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: verified-release-assets
+          path: release
+      - name: Create immutable GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" release/* \
+            --verify-tag \
+            --title "RepoPrompt Portable $GITHUB_REF_NAME" \
+            --notes-file release/RELEASE_NOTES.md

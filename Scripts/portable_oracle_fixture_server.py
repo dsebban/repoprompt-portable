@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import hmac
 import json
+from pathlib import Path
 import sys
 import threading
 import time
@@ -26,6 +27,7 @@ class FixtureState:
 			"primary_requests": 0,
 			"secondary_requests": 0,
 			"completed_pairs": 0,
+			"forced_error_requests": 0,
 			"barrier_timeouts": 0,
 			"authorization_failures": 0,
 			"invalid_requests": 0,
@@ -48,6 +50,11 @@ class FixtureState:
 	def note_invalid(self) -> None:
 		with self.condition:
 			self.counters["invalid_requests"] += 1
+
+	def note_forced_error(self, lane: str) -> None:
+		with self.condition:
+			self.counters[f"{lane}_requests"] += 1
+			self.counters["forced_error_requests"] += 1
 
 	def await_pair(self, lane: str, prompt_hash: str) -> tuple[bool, str | None]:
 		with self.condition:
@@ -156,6 +163,30 @@ class FixtureHandler(BaseHTTPRequestHandler):
 			self.send_json(400, {"error": {"message": f"Invalid request: {error}"}})
 			return
 
+		if "PORTABLE_ORACLE_FORCE_ERROR" in user_prompt:
+			self.server.state.note_forced_error(lane)
+			completion_id = f"chatcmpl-error-{lane}"
+			error_value = {
+				"error": {
+					"message": f"token {self.server.state.token} rejected",
+					"type": "rate_limit_error",
+					"param": "reasoning_effort",
+					"code": "rate_limited",
+					"failure_reason": "active_recovery",
+				},
+				"recovery": {"attempted": True, "recovered": False, "source": "fixture"},
+			}
+			escaped_token = f"\\u{ord(self.server.state.token[0]):04x}{self.server.state.token[1:]}"
+			data = json.dumps(error_value, sort_keys=True, separators=(",", ":")).replace(
+				self.server.state.token,
+				escaped_token,
+			).encode("utf-8")
+			self.send_raw_json(429, data, {
+				"X-Request-ID": completion_id,
+				"Retry-After": "30",
+			})
+			return
+
 		prompt_hash = hashlib.sha256(user_prompt.encode("utf-8")).hexdigest()
 		succeeded, error = self.server.state.await_pair(lane, prompt_hash)
 		if not succeeded:
@@ -167,20 +198,37 @@ class FixtureHandler(BaseHTTPRequestHandler):
 			f"fixture lane={lane} model={model} prompt_sha256={prompt_hash} "
 			f"sentinel={str(sentinel_present).lower()}"
 		)
+		completion_id = f"chatcmpl-fixture-{lane}"
 		self.send_json(200, {
-			"choices": [{"message": {"role": "assistant", "content": completion}}]
-		})
+			"id": completion_id,
+			"object": "chat.completion",
+			"created": 1720000000,
+			"model": model,
+			"conversation_id": f"conversation-{lane}",
+			"baseline_assistant_message_id": f"assistant-baseline-{lane}",
+			"recovery": {"attempted": True, "recovered": True, "source": "fixture"},
+			"choices": [{
+				"index": 0,
+				"message": {"role": "assistant", "content": completion},
+				"finish_reason": "stop",
+			}],
+			"usage": {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18},
+		}, {"X-Request-ID": completion_id})
 
 	@staticmethod
 	def validate_body(body: Any) -> tuple[str, str, str]:
 		if not isinstance(body, dict):
 			raise TypeError("body must be an object")
+		if set(body) != {"model", "messages", "stream", "reasoning_effort"}:
+			raise ValueError("body must contain exactly model, messages, stream, and reasoning_effort")
 		model = body.get("model")
 		messages = body.get("messages")
 		if not isinstance(model, str) or not model:
 			raise TypeError("model must be a non-empty string")
 		if body.get("stream") is not False:
 			raise ValueError("stream must be false")
+		if body.get("reasoning_effort") != "xhigh":
+			raise ValueError("reasoning_effort must be xhigh")
 		if not isinstance(messages, list) or len(messages) != 2:
 			raise TypeError("messages must contain exactly system and user entries")
 		system, user = messages
@@ -198,11 +246,16 @@ class FixtureHandler(BaseHTTPRequestHandler):
 			raise ValueError("system prompt must identify exactly one Oracle lane")
 		return "primary" if primary else "secondary"
 
-	def send_json(self, status: int, value: Any) -> None:
+	def send_json(self, status: int, value: Any, headers: dict[str, str] | None = None) -> None:
 		data = json.dumps(value, sort_keys=True, separators=(",", ":")).encode("utf-8")
+		self.send_raw_json(status, data, headers)
+
+	def send_raw_json(self, status: int, data: bytes, headers: dict[str, str] | None = None) -> None:
 		self.send_response(status)
 		self.send_header("Content-Type", "application/json")
 		self.send_header("Content-Length", str(len(data)))
+		for name, header_value in (headers or {}).items():
+			self.send_header(name, header_value)
 		self.end_headers()
 		self.wfile.write(data)
 
@@ -216,6 +269,7 @@ def main() -> int:
 	parser.add_argument("--port", type=int, default=8080)
 	parser.add_argument("--token", required=True)
 	parser.add_argument("--barrier-timeout-seconds", type=float, default=10.0)
+	parser.add_argument("--ready-file", type=Path)
 	args = parser.parse_args()
 	if not args.token:
 		parser.error("--token must not be empty")
@@ -224,6 +278,9 @@ def main() -> int:
 
 	state = FixtureState(args.token, args.barrier_timeout_seconds)
 	server = FixtureHTTPServer((args.host, args.port), state)
+	if args.ready_file is not None:
+		args.ready_file.write_text(f"{server.server_port}\n", encoding="utf-8")
+		args.ready_file.chmod(0o600)
 	print(f"portable Oracle fixture listening on {args.host}:{server.server_port}", file=sys.stderr, flush=True)
 	try:
 		server.serve_forever()

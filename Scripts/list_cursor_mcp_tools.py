@@ -8,9 +8,10 @@ MCP server (e.g. repoprompt-portable) starts and responds correctly.
 
 Usage:
   python3 Scripts/list_cursor_mcp_tools.py [--config PATH] [--server NAME] [--timeout SECONDS]
+      [--expect-schema-version VERSION]
 
-Defaults: --config ~/.cursor/mcp.json, --server repoprompt-portable, --timeout 60
-Exit code is 0 only if the server initializes and reports at least one tool.
+Defaults: --config ~/.cursor/mcp.json, --server repoprompt-portable, --timeout 60.
+Exit code is 0 only if the server initializes and all reported tools share one schema version.
 """
 from __future__ import annotations
 
@@ -23,6 +24,7 @@ import sys
 import time
 
 PROTOCOL_VERSION = "2025-03-26"
+TOOL_SCHEMA_VERSION_KEY = "x-repoprompt-portable-schema-version"
 
 
 def load_server(config_path: str, server_name: str) -> dict:
@@ -117,6 +119,7 @@ def main() -> int:
     parser.add_argument("--config", default="~/.cursor/mcp.json")
     parser.add_argument("--server", default="repoprompt-portable")
     parser.add_argument("--timeout", type=float, default=60.0)
+    parser.add_argument("--expect-schema-version")
     args = parser.parse_args()
 
     server = load_server(args.config, args.server)
@@ -148,6 +151,28 @@ def main() -> int:
         if not isinstance(tools, list) or not tools:
             print("No tools reported.", file=sys.stderr)
             return 1
+        schema_versions: set[str] = set()
+        for tool in tools:
+            if not isinstance(tool, dict) or not isinstance(tool.get("name"), str):
+                print(f"Malformed tool advertisement: {tool!r}", file=sys.stderr)
+                return 1
+            schema = tool.get("inputSchema")
+            version = schema.get(TOOL_SCHEMA_VERSION_KEY) if isinstance(schema, dict) else None
+            if not isinstance(version, str) or not version:
+                print(f"Tool {tool['name']!r} has no valid {TOOL_SCHEMA_VERSION_KEY}", file=sys.stderr)
+                return 1
+            schema_versions.add(version)
+        if len(schema_versions) != 1:
+            print(f"Tools disagree on {TOOL_SCHEMA_VERSION_KEY}: {schema_versions}", file=sys.stderr)
+            return 1
+        schema_version = next(iter(schema_versions))
+        if args.expect_schema_version is not None and schema_version != args.expect_schema_version:
+            print(
+                f"Expected tool schema {args.expect_schema_version}, got {schema_version}",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"Portable tool schema: {schema_version}")
         print(f"\n{len(tools)} tool(s):")
         for tool in sorted(tools, key=lambda t: t.get("name", "")):
             name = tool.get("name", "?")

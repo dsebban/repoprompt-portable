@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+IMAGE="@@IMAGE@@"
+WORKSPACE="${1:-$PWD}"
+
+exec docker run --rm -i \
+	--read-only \
+	--cap-drop ALL \
+	--security-opt no-new-privileges \
+	--pids-limit 256 \
+	--tmpfs /tmp:rw,nosuid,nodev,size=64m \
+	--add-host host.docker.internal:host-gateway \
+	--mount "type=bind,src=$WORKSPACE,dst=/workspace,readonly" \
+	--env REPOPROMPT_ORACLE_ENDPOINT \
+	--env REPOPROMPT_ORACLE_PRIMARY_MODEL \
+	--env REPOPROMPT_ORACLE_SECONDARY_MODEL \
+	--env REPOPROMPT_ORACLE_API_KEY \
+	--env REPOPROMPT_ORACLE_REASONING_EFFORT \
+	--env REPOPROMPT_ORACLE_TIMEOUT_SECONDS \
+	--env OPENCODE_API_KEY \
+	"$IMAGE" --no-persist --root /workspace

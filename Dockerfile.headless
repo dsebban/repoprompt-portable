@@ -16,7 +16,10 @@ RUN swift package dump-package > /tmp/package.json \
 	&& swift build -c release --product repoprompt-portable-cli \
 	&& mkdir -p /out \
 	&& cp "$(swift build -c release --show-bin-path)/repoprompt-headless" /out/repoprompt-headless \
-	&& cp "$(swift build -c release --show-bin-path)/repoprompt-portable-cli" /out/repoprompt-portable-cli
+	&& cp "$(swift build -c release --show-bin-path)/repoprompt-portable-cli" /out/repoprompt-portable-cli \
+	&& test -x /out/repoprompt-headless \
+	&& test -x /out/repoprompt-portable-cli \
+	&& /out/repoprompt-portable-cli --help >/dev/null
 
 FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e AS opencode
 
@@ -43,7 +46,11 @@ COPY --from=builder /out/repoprompt-portable-cli /usr/local/bin/repoprompt-porta
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 COPY opencode.docker.json /etc/opencode/opencode.json
 
-RUN groupadd --gid 10001 repoprompt \
+RUN test -x /usr/local/bin/repoprompt-headless \
+	&& test -x /usr/local/bin/repoprompt-portable-cli \
+	&& /usr/local/bin/repoprompt-portable-cli --help >/dev/null \
+	&& ! grep -Eiq '"apiKey"[[:space:]]*:|sk-[[:alnum:]]{20,}' /etc/opencode/opencode.json \
+	&& groupadd --gid 10001 repoprompt \
 	&& useradd --uid 10001 --gid 10001 --create-home --shell /usr/sbin/nologin repoprompt \
 	&& mkdir -p /workspace \
 	&& chown repoprompt:repoprompt /workspace

@@ -1,0 +1,24 @@
+services:
+  repoprompt-portable:
+    image: "@@IMAGE@@"
+    read_only: true
+    user: "10001:10001"
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    pids_limit: 256
+    tmpfs:
+      - /tmp:rw,nosuid,nodev,size=64m
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    stdin_open: true
+    volumes:
+      - ./:/workspace:ro
+    environment:
+      - REPOPROMPT_ORACLE_ENDPOINT
+      - REPOPROMPT_ORACLE_PRIMARY_MODEL
+      - REPOPROMPT_ORACLE_SECONDARY_MODEL
+      - REPOPROMPT_ORACLE_API_KEY
+      - REPOPROMPT_ORACLE_REASONING_EFFORT
+      - REPOPROMPT_ORACLE_TIMEOUT_SECONDS
+      - OPENCODE_API_KEY
+    command: ["--no-persist", "--root", "/workspace"]

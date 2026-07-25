@@ -15,6 +15,18 @@ from typing import Any
 
 
 PROTOCOL_VERSION = "2025-03-26"
+SOFTWARE_VERSION = "0.2.0"
+TOOL_SCHEMA_VERSION = "1.0.0"
+TOOL_SCHEMA_VERSION_KEY = "x-repoprompt-portable-schema-version"
+EXPECTED_TOOL_NAMES = {
+	"bind_context",
+	"get_file_tree",
+	"read_file",
+	"manage_selection",
+	"file_search",
+	"context_builder",
+	"oracle_send",
+}
 FIXTURE_SENTINEL = "PORTABLE_ORACLE_FIXTURE_SENTINEL"
 
 
@@ -139,6 +151,45 @@ def nested_keys(value: Any) -> set[str]:
 	return set()
 
 
+def assert_provider_metadata(value: Any, lane: str, model: str) -> None:
+	assert isinstance(value, dict), value
+	assert value.get("http_status") == 200, value
+	assert isinstance(value.get("latency_ms"), int) and value["latency_ms"] >= 0, value
+	assert value.get("id") == f"chatcmpl-fixture-{lane}", value
+	assert value.get("request_id") == f"chatcmpl-fixture-{lane}", value
+	assert value.get("model") == model, value
+	assert value.get("finish_reason") == "stop", value
+	assert value.get("conversation_id") == f"conversation-{lane}", value
+	assert value.get("baseline_assistant_message_id") == f"assistant-baseline-{lane}", value
+	assert value.get("usage") == {"prompt_tokens": 11, "completion_tokens": 7, "total_tokens": 18}, value
+	assert value.get("recovery") == {"attempted": True, "recovered": True, "source": "fixture"}, value
+
+
+def assert_surf_error(value: Any, lane: str) -> None:
+	assert isinstance(value, dict), value
+	assert value.get("code") == "http_error", value
+	assert value.get("message") == "token [REDACTED] rejected", value
+	assert value.get("http_status") == 429, value
+	assert isinstance(value.get("latency_ms"), int) and value["latency_ms"] >= 0, value
+	assert value.get("request_id") == f"chatcmpl-error-{lane}", value
+	assert value.get("retryable") is True, value
+	assert value.get("retry_after_seconds") == 30, value
+	assert value.get("provider_error") == {
+		"message": "token [REDACTED] rejected",
+		"type": "rate_limit_error",
+		"param": "reasoning_effort",
+		"code": "rate_limited",
+		"failure_reason": "active_recovery",
+	}, value
+	assert value.get("recovery") == {"attempted": True, "recovered": False, "source": "fixture"}, value
+	raw_body = value.get("raw_error_body")
+	assert isinstance(raw_body, str), value
+	assert "portable-oracle-smoke-token" not in raw_body, raw_body
+	assert "\\u0070ortable-oracle-smoke-token" not in raw_body, raw_body
+	assert json.loads(raw_body)["error"]["message"] == "token [REDACTED] rejected", raw_body
+	assert value.get("raw_error_body_truncated") is None, value
+
+
 def run_smoke(client: StdioMCPClient) -> None:
 	initialized = rpc_result(client.request("initialize", {
 		"protocolVersion": PROTOCOL_VERSION,
@@ -146,14 +197,42 @@ def run_smoke(client: StdioMCPClient) -> None:
 		"clientInfo": {"name": "portable-oracle-docker-smoke", "version": "1"},
 	}), "initialize")
 	assert initialized.get("protocolVersion") == PROTOCOL_VERSION, initialized
+	server_info = initialized.get("serverInfo")
+	assert isinstance(server_info, dict), initialized
+	assert server_info.get("version") == SOFTWARE_VERSION, server_info
+	instructions = initialized.get("instructions")
+	assert isinstance(instructions, str), initialized
+	assert "manage_selection is the only selection mutation interface" in instructions, instructions
+	assert "context_builder renders only the current explicit" in instructions, instructions
+	assert "oracle_send always snapshots and attaches the current explicit selection" in instructions, instructions
+	assert f"Portable tool schema version: {TOOL_SCHEMA_VERSION}." in instructions, instructions
 	client.notify("notifications/initialized")
 
 	listed = rpc_result(client.request("tools/list"), "tools/list")
 	tools = listed.get("tools")
 	assert isinstance(tools, list), listed
-	tool_names = {tool.get("name") for tool in tools if isinstance(tool, dict)}
-	assert {"manage_selection", "context_builder", "oracle_send"} <= tool_names, tool_names
-	assert "workspace_context" not in tool_names, tool_names
+	assert len(tools) == len(EXPECTED_TOOL_NAMES), tools
+	tools_by_name = {
+		tool.get("name"): tool
+		for tool in tools
+		if isinstance(tool, dict) and isinstance(tool.get("name"), str)
+	}
+	assert len(tools_by_name) == len(tools), tools
+	assert set(tools_by_name) == EXPECTED_TOOL_NAMES, set(tools_by_name)
+	for name, tool in tools_by_name.items():
+		schema = tool.get("inputSchema")
+		assert isinstance(schema, dict), {name: tool}
+		assert schema.get(TOOL_SCHEMA_VERSION_KEY) == TOOL_SCHEMA_VERSION, {name: schema}
+	builder_description = tools_by_name["context_builder"].get("description", "")
+	assert "current explicit in-memory" in builder_description, builder_description
+	assert "never discovers or changes selection" in builder_description, builder_description
+	oracle_description = tools_by_name["oracle_send"].get("description", "")
+	assert "Always snapshot and attach the current explicit selection" in oracle_description, oracle_description
+	assert "no context-free mode" in oracle_description, oracle_description
+	builder_properties = tools_by_name["context_builder"]["inputSchema"].get("properties", {})
+	oracle_properties = tools_by_name["oracle_send"]["inputSchema"].get("properties", {})
+	assert "review_diff" in builder_properties, builder_properties
+	assert {"review_diff", "clarify_handoff"}.issubset(oracle_properties), oracle_properties
 
 	selection = tool_json(client, "manage_selection", {
 		"op": "set",
@@ -190,7 +269,7 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert plan.get("response_type") == "plan", plan
 	assert plan.get("prompt") == "Plan around the selected fixture sentinel.", plan
 	assert plan.get("pair_status") == "completed", plan
-	assert plan.get("model_raw_id") == "portable-primary-model", plan
+	assert plan.get("model_raw_id") == "gpt-5.6-sol", plan
 	plan_results = plan.get("oracle_results")
 	assert isinstance(plan_results, dict), plan
 	plan_primary = plan_results.get("primary")
@@ -198,6 +277,15 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert isinstance(plan_primary, dict) and isinstance(plan_secondary, dict), plan_results
 	assert plan_primary.get("oracle_lane") == "primary" and plan_primary.get("status") == "completed", plan_primary
 	assert plan_secondary.get("oracle_lane") == "secondary" and plan_secondary.get("status") == "completed", plan_secondary
+	assert plan_primary.get("model_raw_id") == "gpt-5.6-sol", plan_primary
+	assert plan_secondary.get("model_raw_id") == "openrouter/team:gpt-5.6-sol[variant=secondary]", plan_secondary
+	assert_provider_metadata(plan.get("provider_metadata"), "primary", "gpt-5.6-sol")
+	assert_provider_metadata(plan_primary.get("provider_metadata"), "primary", "gpt-5.6-sol")
+	assert_provider_metadata(
+		plan_secondary.get("provider_metadata"),
+		"secondary",
+		"openrouter/team:gpt-5.6-sol[variant=secondary]",
+	)
 	plan_primary_response = plan_primary.get("response")
 	plan_secondary_response = plan_secondary.get("response")
 	assert isinstance(plan_primary_response, str) and "lane=primary" in plan_primary_response, plan_primary
@@ -211,10 +299,12 @@ def run_smoke(client: StdioMCPClient) -> None:
 	oracle = tool_json(client, "oracle_send", {
 		"message": "Review the selected fixture sentinel.",
 		"mode": "review",
+		"review_diff": "diff --git a/fixture.txt b/fixture.txt\n+PORTABLE_REVIEW_DIFF_SENTINEL",
+		"clarify_handoff": json.dumps(built, sort_keys=True, separators=(",", ":")),
 	})
 	assert oracle.get("ok") is True, oracle
 	assert oracle.get("pair_status") == "completed", oracle
-	assert oracle.get("model_raw_id") == "portable-primary-model", oracle
+	assert oracle.get("model_raw_id") == "gpt-5.6-sol", oracle
 	results = oracle.get("oracle_results")
 	assert isinstance(results, dict), oracle
 	primary = results.get("primary")
@@ -222,6 +312,13 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert isinstance(primary, dict) and isinstance(secondary, dict), results
 	assert primary.get("oracle_lane") == "primary" and primary.get("status") == "completed", primary
 	assert secondary.get("oracle_lane") == "secondary" and secondary.get("status") == "completed", secondary
+	assert_provider_metadata(oracle.get("provider_metadata"), "primary", "gpt-5.6-sol")
+	assert_provider_metadata(primary.get("provider_metadata"), "primary", "gpt-5.6-sol")
+	assert_provider_metadata(
+		secondary.get("provider_metadata"),
+		"secondary",
+		"openrouter/team:gpt-5.6-sol[variant=secondary]",
+	)
 	primary_response = primary.get("response")
 	secondary_response = secondary.get("response")
 	assert isinstance(primary_response, str) and "lane=primary" in primary_response, primary
@@ -234,6 +331,24 @@ def run_smoke(client: StdioMCPClient) -> None:
 	forbidden = {"chat_id", "new_chat", "oracle_export_path", "winner", "synthesis", "placeholder"}
 	assert nested_keys(oracle).isdisjoint(forbidden), oracle
 	assert "placeholder" not in json.dumps(oracle, sort_keys=True).lower(), oracle
+
+	forced_error = tool_json(client, "oracle_send", {
+		"message": "PORTABLE_ORACLE_FORCE_ERROR",
+		"mode": "chat",
+	})
+	assert forced_error.get("ok") is False, forced_error
+	assert forced_error.get("pair_status") == "failed", forced_error
+	assert forced_error.get("response") is None, forced_error
+	assert_surf_error(forced_error.get("error"), "primary")
+	forced_results = forced_error.get("oracle_results")
+	assert isinstance(forced_results, dict), forced_error
+	forced_primary = forced_results.get("primary")
+	forced_secondary = forced_results.get("secondary")
+	assert isinstance(forced_primary, dict) and isinstance(forced_secondary, dict), forced_results
+	assert forced_primary.get("oracle_lane") == "primary" and forced_primary.get("status") == "failed", forced_primary
+	assert forced_secondary.get("oracle_lane") == "secondary" and forced_secondary.get("status") == "failed", forced_secondary
+	assert_surf_error(forced_primary.get("error"), "primary")
+	assert_surf_error(forced_secondary.get("error"), "secondary")
 
 
 def main() -> int:

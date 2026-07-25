@@ -13,15 +13,25 @@ jobs:
     runs-on: ubuntu-24.04
     container: swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e
     steps:
-      - uses: actions/checkout@v4
-      - name: Build
-        run: swift build --product repoprompt-headless
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Verify release source policy
+        run: |
+          python3 Scripts/verify_portable_release.py source --expected-version 0.2.0
+          python3 Scripts/test_verify_portable_release.py
+      - name: Build both executables
+        run: |
+          swift build --product repoprompt-headless
+          swift build --product repoprompt-portable-cli
       - name: Test
         run: swift test
 
   docker-smoke:
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - name: Run self-contained Docker smoke
-        run: bash Scripts/smoke_portable_oracle_docker.sh
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Run hardened bridge and host-gateway smoke
+        run: |
+          bash Scripts/smoke_portable_oracle_docker.sh
+          RP_PORTABLE_IMAGE=repoprompt-headless:portable-smoke \
+            RP_PORTABLE_SKIP_BUILD=1 \
+            bash Scripts/smoke_portable_host_gateway.sh
