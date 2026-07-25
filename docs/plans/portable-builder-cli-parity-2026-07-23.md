@@ -1,5 +1,7 @@
 # Portable Builder and CLI Parity Plan
 
+> **Historical plan.** This document records the pre-implementation scope and is not the current product contract. Builder `clarify|plan|review`, the direct CLI, fail-closed provider context, caller-supplied review evidence, CLI-only private export, schema versioning, and release hardening are now implemented. Use [`docs/architecture/portable-oracle-mcp.md`](../architecture/portable-oracle-mcp.md) and the live CLI/MCP help as the source of truth; stale “current state” or unsupported-feature statements below are retained only as history.
+
 Date: 2026-07-23
 
 ## Goal
