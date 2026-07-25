@@ -12,11 +12,12 @@ COPY RepoPromptPortableCLITests ./RepoPromptPortableCLITests
 
 RUN swift package dump-package > /tmp/package.json \
 	&& swift package show-dependencies --format json > /tmp/dependencies.json \
-	&& swift build -c release --product repoprompt-headless \
-	&& swift build -c release --product repoprompt-portable-cli \
+	&& swift build -c release --product repoprompt-headless --static-swift-stdlib \
+	&& swift build -c release --product repoprompt-portable-cli --static-swift-stdlib \
 	&& mkdir -p /out \
 	&& cp "$(swift build -c release --show-bin-path)/repoprompt-headless" /out/repoprompt-headless \
 	&& cp "$(swift build -c release --show-bin-path)/repoprompt-portable-cli" /out/repoprompt-portable-cli \
+	&& strip /out/repoprompt-headless /out/repoprompt-portable-cli \
 	&& test -x /out/repoprompt-headless \
 	&& test -x /out/repoprompt-portable-cli \
 	&& /out/repoprompt-portable-cli --help >/dev/null
@@ -45,13 +46,10 @@ RUN apt-get update \
 	&& apt-get install --yes --no-install-recommends ca-certificates libcurl4 tzdata \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /usr/lib/swift/linux /usr/lib/swift/linux
 COPY --from=builder /out/repoprompt-headless /usr/local/bin/repoprompt-headless
 COPY --from=builder /out/repoprompt-portable-cli /usr/local/bin/repoprompt-portable-cli
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 COPY opencode.docker.json /etc/opencode/opencode.json
-
-ENV LD_LIBRARY_PATH=/usr/lib/swift/linux
 
 RUN test -x /usr/local/bin/repoprompt-headless \
 	&& test -x /usr/local/bin/repoprompt-portable-cli \
