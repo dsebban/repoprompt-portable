@@ -233,10 +233,9 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 				"completion_tokens": 7,
 				"total_tokens": 18
 			])
-			XCTAssertEqual(providerMetadata["recovery"] as? [String: AnyHashable], [
-				"attempted": true,
-				"source": "fixture"
-			])
+			let recovery = try XCTUnwrap(providerMetadata["recovery"] as? [String: Any])
+			XCTAssertEqual(recovery["attempted"] as? Bool, true)
+			XCTAssertEqual(recovery["source"] as? String, "fixture")
 			let oracleResults = try XCTUnwrap(object["oracle_results"] as? [String: Any])
 			let primaryResult = try XCTUnwrap(oracleResults["primary"] as? [String: Any])
 			let secondaryResult = try XCTUnwrap(oracleResults["secondary"] as? [String: Any])

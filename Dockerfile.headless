@@ -39,12 +39,19 @@ RUN apt-get update \
 	&& tar -xzf /tmp/opencode.tar.gz -C /usr/local/bin opencode \
 	&& opencode --version
 
-FROM swift:6.1-jammy@sha256:12be34a341945adb64914405ed7b568fcb2d35edbd63a3755007e47dce59456e
+FROM ubuntu:22.04@sha256:0e0a0fc6d18feda9db1590da249ac93e8d5abfea8f4c3c0c849ce512b5ef8982
 
+RUN apt-get update \
+	&& apt-get install --yes --no-install-recommends ca-certificates libcurl4 tzdata \
+	&& rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /usr/lib/swift/linux /usr/lib/swift/linux
 COPY --from=builder /out/repoprompt-headless /usr/local/bin/repoprompt-headless
 COPY --from=builder /out/repoprompt-portable-cli /usr/local/bin/repoprompt-portable-cli
 COPY --from=opencode /usr/local/bin/opencode /usr/local/bin/opencode
 COPY opencode.docker.json /etc/opencode/opencode.json
+
+ENV LD_LIBRARY_PATH=/usr/lib/swift/linux
 
 RUN test -x /usr/local/bin/repoprompt-headless \
 	&& test -x /usr/local/bin/repoprompt-portable-cli \

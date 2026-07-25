@@ -37,7 +37,7 @@ fi
 docker image inspect "$IMAGE" >/dev/null
 mkdir -p "$REPO_ROOT/.build"
 TEMP_DIR="$(mktemp -d "$REPO_ROOT/.build/portable-host-gateway.XXXXXX")"
-chmod 0700 "$TEMP_DIR"
+chmod 0755 "$TEMP_DIR"
 printf '%s\n' \
 	'PORTABLE_ORACLE_FIXTURE_SENTINEL' \
 	'This file proves authenticated host-gateway source reached both Oracle lanes.' \
