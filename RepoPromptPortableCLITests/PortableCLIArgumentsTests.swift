@@ -35,6 +35,31 @@ final class PortableCLIArgumentsTests: XCTestCase {
 		XCTAssertEqual(parsed.commands[1].arguments["instructions"], .string("Build this."))
 	}
 
+	func testParsesExportJSONLForImplicitAndExecCommands() throws {
+		let implicit = try PortableCLIArguments.parse([
+			"--export-jsonl", "output/result.jsonl",
+			"read_file", "{\"path\":\"README.md\"}"
+		])
+		XCTAssertEqual(implicit.exportPath, "output/result.jsonl")
+
+		let exec = try PortableCLIArguments.parse([
+			"--export-jsonl=/tmp/result.jsonl",
+			"-e", "get_file_tree {}"
+		])
+		XCTAssertEqual(exec.exportPath, "/tmp/result.jsonl")
+		XCTAssertTrue(PortableCLIArguments.usage(executable: "portable").contains("--export-jsonl <path>"))
+	}
+
+	func testRejectsInvalidExportJSONLOptions() {
+		XCTAssertThrowsError(try PortableCLIArguments.parse(["--export-jsonl"]))
+		XCTAssertThrowsError(try PortableCLIArguments.parse(["--export-jsonl=", "read_file", "{}"] ))
+		XCTAssertThrowsError(try PortableCLIArguments.parse([
+			"--export-jsonl", "one.jsonl",
+			"--export-jsonl", "two.jsonl",
+			"read_file", "{}"
+		]))
+	}
+
 	func testRejectsMixedImplicitAndExecCommands() {
 		XCTAssertThrowsError(try PortableCLIArguments.parse(["-e", "read_file {}", "get_file_tree"]))
 	}

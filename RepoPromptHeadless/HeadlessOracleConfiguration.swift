@@ -2,7 +2,7 @@ import Foundation
 
 public struct HeadlessOracleConfiguration: Equatable, Sendable {
 	public static let defaultTimeoutSeconds = 120
-	public static let timeoutRange = 1 ... 600
+	public static let timeoutRange = 1 ... 3_600
 	public static let openCodeGoEndpoint = URL(string: "https://opencode.ai/zen/go/v1/chat/completions")!
 	public static let openCodeGoModel = "deepseek-v4-flash"
 
@@ -11,13 +11,15 @@ public struct HeadlessOracleConfiguration: Equatable, Sendable {
 	public let secondaryModel: String
 	public let bearerToken: String?
 	public let timeoutSeconds: Int
+	public let reasoningEffort: String?
 
 	public init(
 		endpoint: URL,
 		primaryModel: String,
 		secondaryModel: String,
 		bearerToken: String? = nil,
-		timeoutSeconds: Int = defaultTimeoutSeconds
+		timeoutSeconds: Int = defaultTimeoutSeconds,
+		reasoningEffort: String? = nil
 	) throws {
 		try Self.validate(endpoint: endpoint)
 		self.endpoint = endpoint
@@ -25,12 +27,13 @@ public struct HeadlessOracleConfiguration: Equatable, Sendable {
 		self.secondaryModel = try Self.validatedModel(secondaryModel, name: "Secondary")
 		guard Self.timeoutRange.contains(timeoutSeconds) else {
 			throw HeadlessRuntimeError(
-				"REPOPROMPT_ORACLE_TIMEOUT_SECONDS must be between 1 and 600.",
+				"REPOPROMPT_ORACLE_TIMEOUT_SECONDS must be between 1 and 3600.",
 				exitCode: .configuration
 			)
 		}
 		self.bearerToken = bearerToken.flatMap { token in token.isEmpty ? nil : token }
 		self.timeoutSeconds = timeoutSeconds
+		self.reasoningEffort = try Self.validatedReasoningEffort(reasoningEffort)
 	}
 
 	public static func resolve(environment: [String: String] = ProcessInfo.processInfo.environment) throws -> HeadlessOracleConfiguration? {
@@ -47,7 +50,8 @@ public struct HeadlessOracleConfiguration: Equatable, Sendable {
 				primaryModel: openCodeGoModel,
 				secondaryModel: openCodeGoModel,
 				bearerToken: apiKey,
-				timeoutSeconds: try resolvedTimeout(environment)
+				timeoutSeconds: try resolvedTimeout(environment),
+				reasoningEffort: environment["REPOPROMPT_ORACLE_REASONING_EFFORT"]
 			)
 		}
 		guard
@@ -67,7 +71,8 @@ public struct HeadlessOracleConfiguration: Equatable, Sendable {
 			primaryModel: primaryModel,
 			secondaryModel: secondaryModel,
 			bearerToken: environment["REPOPROMPT_ORACLE_API_KEY"],
-			timeoutSeconds: try resolvedTimeout(environment)
+			timeoutSeconds: try resolvedTimeout(environment),
+			reasoningEffort: environment["REPOPROMPT_ORACLE_REASONING_EFFORT"]
 		)
 	}
 
@@ -77,7 +82,7 @@ public struct HeadlessOracleConfiguration: Equatable, Sendable {
 		}
 		guard let parsed = Int(rawTimeout.trimmingCharacters(in: .whitespacesAndNewlines)) else {
 			throw HeadlessRuntimeError(
-				"REPOPROMPT_ORACLE_TIMEOUT_SECONDS must be an integer between 1 and 600.",
+				"REPOPROMPT_ORACLE_TIMEOUT_SECONDS must be an integer between 1 and 3600.",
 				exitCode: .configuration
 			)
 		}
@@ -89,6 +94,22 @@ public struct HeadlessOracleConfiguration: Equatable, Sendable {
 			return nil
 		}
 		return trimmed
+	}
+
+	private static func validatedReasoningEffort(_ raw: String?) throws -> String? {
+		guard let raw else { return nil }
+		let value = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard
+			!value.isEmpty,
+			value.utf8.count <= 64,
+			!raw.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+		else {
+			throw HeadlessRuntimeError(
+				"REPOPROMPT_ORACLE_REASONING_EFFORT must contain 1...64 UTF-8 bytes without control characters.",
+				exitCode: .configuration
+			)
+		}
+		return value
 	}
 
 	private static func validate(endpoint: URL) throws {

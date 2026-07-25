@@ -99,6 +99,8 @@ public struct HeadlessOptions: Equatable, Sendable {
 
 		Run RepoPrompt as a direct headless stdio MCP server. Protocol frames are read from stdin and written to stdout; diagnostics go to stderr.
 
+		context_builder clarify is local; plan/review and oracle_send always attach the complete current explicit selection and dispatch concurrent Primary/Secondary requests. review_diff and clarify_handoff are caller-supplied untrusted evidence sent to both lanes.
+
 		Options:
 		  --root <path>              Repeatable workspace root. Defaults to the current working directory.
 		  --workspace-name <name>    Optional display name for the headless workspace.
@@ -115,7 +117,8 @@ public struct HeadlessOptions: Equatable, Sendable {
 		REPOPROMPT_ORACLE_PRIMARY_MODEL     Required Primary model ID.
 		REPOPROMPT_ORACLE_SECONDARY_MODEL   Required Secondary model ID; may equal Primary.
 		REPOPROMPT_ORACLE_API_KEY           Optional bearer token.
-		REPOPROMPT_ORACLE_TIMEOUT_SECONDS   Optional request timeout, 1...600 (default 120).
+		REPOPROMPT_ORACLE_REASONING_EFFORT  Optional top-level reasoning_effort value for both lanes.
+		REPOPROMPT_ORACLE_TIMEOUT_SECONDS   Optional request timeout, 1...3600 (default 120).
 		"""
 	}
 }

@@ -25,13 +25,18 @@ public struct PortableCLIApplication: Sendable {
 	public struct Dependencies: Sendable {
 		public let resolveOracleConfiguration: @Sendable () throws -> HeadlessOracleConfiguration?
 		public let makeCatalog: @Sendable (HeadlessOptions, HeadlessOracleConfiguration?) async throws -> any PortableCLIToolCatalog
+		public let exportJSONL: @Sendable (Data, String) throws -> Void
 
 		public init(
 			resolveOracleConfiguration: @escaping @Sendable () throws -> HeadlessOracleConfiguration?,
-			makeCatalog: @escaping @Sendable (HeadlessOptions, HeadlessOracleConfiguration?) async throws -> any PortableCLIToolCatalog
+			makeCatalog: @escaping @Sendable (HeadlessOptions, HeadlessOracleConfiguration?) async throws -> any PortableCLIToolCatalog,
+			exportJSONL: @escaping @Sendable (Data, String) throws -> Void = { data, path in
+				try PortableCLIAtomicExporter.write(data, to: path)
+			}
 		) {
 			self.resolveOracleConfiguration = resolveOracleConfiguration
 			self.makeCatalog = makeCatalog
+			self.exportJSONL = exportJSONL
 		}
 
 		public static let live = Dependencies(
@@ -119,6 +124,17 @@ public struct PortableCLIApplication: Sendable {
 			standardOutput += line + "\n"
 		}
 
+		if let exportPath = parsed.exportPath {
+			do {
+				try dependencies.exportJSONL(Data(standardOutput.utf8), exportPath)
+			} catch {
+				return PortableCLIExecutionResult(
+					exitCode: .cannotCreate,
+					standardOutput: standardOutput,
+					standardError: "\(executable): unable to create JSONL export: \(error)\n"
+				)
+			}
+		}
 		return PortableCLIExecutionResult(exitCode: .success, standardOutput: standardOutput)
 	}
 

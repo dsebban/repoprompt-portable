@@ -37,6 +37,53 @@ final class PortableCLIApplicationTests: XCTestCase {
 		XCTAssertEqual(calls.map(\.name), ["first", "second"])
 	}
 
+	func testSuccessfulSequenceExportsExactJSONLAndPreservesStdout() async {
+		let catalog = MockCatalog(
+			names: ["first", "second"],
+			results: [success("{\"value\":1}"), success("{\"ok\":false,\"pair_status\":\"failed\"}")]
+		)
+		let recorder = ExportRecorder()
+		let result = await application(catalog: catalog, exportJSONL: recorder.record).run(arguments: [
+			"--export-jsonl", "result.jsonl",
+			"-e", "first {}",
+			"-e", "second {}"
+		])
+
+		let expected = "{\"value\":1}\n{\"ok\":false,\"pair_status\":\"failed\"}\n"
+		XCTAssertEqual(result.exitCode, .success)
+		XCTAssertEqual(result.standardOutput, expected)
+		XCTAssertEqual(recorder.value?.data, Data(expected.utf8))
+		XCTAssertEqual(recorder.value?.path, "result.jsonl")
+	}
+
+	func testPartialToolFailureDoesNotExport() async {
+		let catalog = MockCatalog(
+			names: ["first", "second"],
+			results: [success("{\"value\":1}"), failure("{\"ok\":false}")]
+		)
+		let recorder = ExportRecorder()
+		let result = await application(catalog: catalog, exportJSONL: recorder.record).run(arguments: [
+			"--export-jsonl", "result.jsonl",
+			"-e", "first {}",
+			"-e", "second {}"
+		])
+
+		XCTAssertEqual(result.exitCode, .toolFailure)
+		XCTAssertEqual(result.standardOutput, "{\"value\":1}\n")
+		XCTAssertNil(recorder.value)
+	}
+
+	func testExportFailureUsesExit73AndPreservesStdout() async {
+		let catalog = MockCatalog(names: ["first"], results: [success("{\"value\":1}")])
+		let result = await application(catalog: catalog, exportJSONL: { _, _ in throw StubError() }).run(arguments: [
+			"--export-jsonl", "result.jsonl", "first", "{}"
+		])
+
+		XCTAssertEqual(result.exitCode, .cannotCreate)
+		XCTAssertEqual(result.standardOutput, "{\"value\":1}\n")
+		XCTAssertTrue(result.standardError.contains("unable to create JSONL export"))
+	}
+
 	func testToolErrorUsesStderrExitOneAndStops() async {
 		let catalog = MockCatalog(
 			names: ["first", "second", "third"],
@@ -100,10 +147,14 @@ final class PortableCLIApplicationTests: XCTestCase {
 		XCTAssertTrue(calls.isEmpty)
 	}
 
-	private func application(catalog: MockCatalog) -> PortableCLIApplication {
+	private func application(
+		catalog: MockCatalog,
+		exportJSONL: @escaping @Sendable (Data, String) throws -> Void = { _, _ in }
+	) -> PortableCLIApplication {
 		PortableCLIApplication(dependencies: .init(
 			resolveOracleConfiguration: { nil },
-			makeCatalog: { _, _ in catalog }
+			makeCatalog: { _, _ in catalog },
+			exportJSONL: exportJSONL
 		))
 	}
 
@@ -151,3 +202,22 @@ private actor MockCatalog: PortableCLIToolCatalog {
 }
 
 private struct StubError: Error {}
+
+private final class ExportRecorder: @unchecked Sendable {
+	private let lock = NSLock()
+	private var stored: (data: Data, path: String)?
+
+	var record: @Sendable (Data, String) throws -> Void {
+		{ [self] data, path in
+			lock.lock()
+			stored = (data, path)
+			lock.unlock()
+		}
+	}
+
+	var value: (data: Data, path: String)? {
+		lock.lock()
+		defer { lock.unlock() }
+		return stored
+	}
+}

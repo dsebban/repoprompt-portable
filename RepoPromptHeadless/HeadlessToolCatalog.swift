@@ -161,14 +161,15 @@ public actor HeadlessToolCatalog {
 			),
 			Self.tool(
 				name: "context_builder",
-				description: "Assemble the current explicit file and slice selection locally, or send it to the configured Oracle provider for plan or review generation.",
+				description: "Render the current explicit in-memory file and slice selection. It never discovers or changes selection; use manage_selection first. clarify stays local; plan and review invoke the configured Oracle provider with the rendered selection.",
 				properties: [
-					"instructions": Self.stringSchema(description: "Required context-building or generation instructions; returned unchanged after trimming."),
+					"instructions": Self.stringSchema(description: "Required clarify, plan, or review request; returned unchanged after trimming."),
 					"response_type": .object([
 						"type": .string("string"),
-						"description": .string("clarify builds context locally; plan and review invoke the configured Oracle provider."),
+						"description": .string("clarify renders the current explicit selection locally; plan and review invoke the configured Oracle provider."),
 						"enum": .array([.string("clarify"), .string("plan"), .string("review")])
 					]),
+					"review_diff": Self.stringSchema(description: "Optional caller-supplied review diff, accepted only with response_type review. Preserved exactly, treated as untrusted evidence, and limited to 262144 UTF-8 bytes."),
 					"max_context_bytes": .object([
 						"type": .string("integer"),
 						"minimum": .int(HeadlessWorkspaceContextBuilder.minimumMaximumBytes),
@@ -182,10 +183,12 @@ public actor HeadlessToolCatalog {
 			),
 			Self.tool(
 				name: "oracle_send",
-				description: "Send one immutable selected-file context to mandatory concurrent Primary and Secondary OpenAI-compatible requests.",
+				description: "Always snapshot and attach the current explicit selection to mandatory concurrent Primary and Secondary OpenAI-compatible requests. There is no context-free mode; use manage_selection first.",
 				properties: [
-					"message": Self.stringSchema(description: "Required Oracle request, up to 65536 UTF-8 bytes."),
+					"message": Self.stringSchema(description: "Required Oracle request, up to 65536 UTF-8 bytes. The current explicit selection is always attached."),
 					"mode": Self.stringSchema(description: "chat, question, plan, or review. Defaults to chat."),
+					"review_diff": Self.stringSchema(description: "Optional caller-supplied review diff, accepted only in review mode. Preserved exactly, sent to both lanes as untrusted evidence, and limited to 262144 UTF-8 bytes."),
+					"clarify_handoff": Self.stringSchema(description: "Optional prior context_builder clarify output. Preserved exactly, sent to both lanes as untrusted caller-supplied evidence, and limited to 1048576 UTF-8 bytes."),
 					"max_context_bytes": .object([
 						"type": .string("integer"),
 						"minimum": .int(HeadlessWorkspaceContextBuilder.minimumMaximumBytes),
@@ -241,7 +244,7 @@ public actor HeadlessToolCatalog {
 		} catch is CancellationError {
 			return self.error("Oracle request was cancelled.", code: "cancelled")
 		} catch let error as HeadlessToolError {
-			return self.error(error.message, code: error.code)
+			return self.error(error.message, code: error.code, details: error.details)
 		} catch {
 			return self.error(String(describing: error), code: "internal_error")
 		}
@@ -445,12 +448,20 @@ public actor HeadlessToolCatalog {
 	}
 
 	private func buildContext(_ args: [String: Value]) async throws -> CallTool.Result {
-		try validateArguments(args, allowed: ["instructions", "response_type", "max_context_bytes"], tool: "context_builder")
+		try validateArguments(args, allowed: ["instructions", "response_type", "review_diff", "max_context_bytes"], tool: "context_builder")
 		let instructions = try requiredText(args["instructions"], name: "instructions")
 		guard instructions.utf8.count <= HeadlessOracleWorkflow.maximumRequestBytes else {
 			throw HeadlessToolError("context_builder instructions exceed 65536 UTF-8 bytes.", code: "invalid_params")
 		}
 		let responseType = try builderResponseType(args["response_type"])
+		let reviewDiff = try optionalEvidence(
+			args["review_diff"],
+			name: "review_diff",
+			maximumBytes: HeadlessOracleWorkflow.maximumReviewDiffBytes
+		)
+		if reviewDiff != nil, responseType != .generated(.review) {
+			throw HeadlessToolError("context_builder review_diff is accepted only with response_type review.", code: "invalid_params")
+		}
 		let maximumBytes = try contextMaximumBytes(args["max_context_bytes"])
 
 		switch responseType {
@@ -465,7 +476,12 @@ public actor HeadlessToolCatalog {
 				"workspace_context": contextJSON(context)
 			])
 		case .generated(let mode):
-			let (context, result) = try await executeOracle(mode: mode, request: instructions, maximumBytes: maximumBytes)
+			let (context, result) = try await executeOracle(
+				mode: mode,
+				request: instructions,
+				maximumBytes: maximumBytes,
+				reviewDiff: reviewDiff
+			)
 			var object = pairJSON(result, context: context)
 			object["response_type"] = .string(mode.rawValue)
 			object["prompt"] = .string(instructions)
@@ -475,7 +491,7 @@ public actor HeadlessToolCatalog {
 	}
 
 	private func oracleSend(_ args: [String: Value]) async throws -> CallTool.Result {
-		try validateArguments(args, allowed: ["message", "mode", "max_context_bytes"], tool: "oracle_send")
+		try validateArguments(args, allowed: ["message", "mode", "review_diff", "clarify_handoff", "max_context_bytes"], tool: "oracle_send")
 		let message = try requiredText(args["message"], name: "message")
 		guard message.utf8.count <= HeadlessOracleWorkflow.maximumRequestBytes else {
 			throw HeadlessToolError("oracle_send message exceeds 65536 UTF-8 bytes.", code: "invalid_params")
@@ -489,8 +505,27 @@ public actor HeadlessToolCatalog {
 		} else {
 			mode = .chat
 		}
+		let reviewDiff = try optionalEvidence(
+			args["review_diff"],
+			name: "review_diff",
+			maximumBytes: HeadlessOracleWorkflow.maximumReviewDiffBytes
+		)
+		if reviewDiff != nil, mode != .review {
+			throw HeadlessToolError("oracle_send review_diff is accepted only in review mode.", code: "invalid_params")
+		}
+		let clarifyHandoff = try optionalEvidence(
+			args["clarify_handoff"],
+			name: "clarify_handoff",
+			maximumBytes: HeadlessOracleWorkflow.maximumClarifyHandoffBytes
+		)
 		let maximumBytes = try contextMaximumBytes(args["max_context_bytes"])
-		let (context, result) = try await executeOracle(mode: mode, request: message, maximumBytes: maximumBytes)
+		let (context, result) = try await executeOracle(
+			mode: mode,
+			request: message,
+			maximumBytes: maximumBytes,
+			reviewDiff: reviewDiff,
+			clarifyHandoff: clarifyHandoff
+		)
 		return try jsonResult(pairJSON(result, context: context))
 	}
 
@@ -508,15 +543,30 @@ public actor HeadlessToolCatalog {
 	private func executeOracle(
 		mode: HeadlessOracleMode,
 		request: String,
-		maximumBytes: Int
+		maximumBytes: Int,
+		reviewDiff: String? = nil,
+		clarifyHandoff: String? = nil
 	) async throws -> (HeadlessWorkspaceContext, HeadlessOraclePairResult) {
 		guard let oracleWorkflow else {
 			throw HeadlessToolError("Oracle is not configured. Set the required REPOPROMPT_ORACLE_* environment variables.", code: "oracle_not_configured")
 		}
 		let selection = await session.selectionStore.snapshot(tabID: nil)
 		let context = contextBuilder.build(selection: selection, maximumBytes: maximumBytes)
+		guard context.isCompleteForProvider else {
+			throw HeadlessToolError(
+				"Selected workspace context is incomplete; inspect context_builder clarify omission metadata before retrying.",
+				code: "incomplete_workspace_context",
+				details: incompleteContextDetails(context)
+			)
+		}
 		do {
-			let result = try await oracleWorkflow.execute(mode: mode, request: request, context: context)
+			let result = try await oracleWorkflow.execute(
+				mode: mode,
+				request: request,
+				context: context,
+				reviewDiff: reviewDiff,
+				clarifyHandoff: clarifyHandoff
+			)
 			return (context, result)
 		} catch let error as HeadlessOracleWorkflowError {
 			throw HeadlessToolError(error.message, code: error.code)
@@ -725,7 +775,8 @@ public actor HeadlessToolCatalog {
 			"context_bytes": .int(context.contentByteCount),
 			"max_context_bytes": .int(context.maximumByteCount),
 			"truncated": .bool(context.truncated),
-			"omitted_root_count": .int(context.omittedRootCount)
+			"omitted_root_count": .int(context.omittedRootCount),
+			"complete_for_provider": .bool(context.isCompleteForProvider)
 		])
 	}
 
@@ -745,6 +796,9 @@ public actor HeadlessToolCatalog {
 		if let response = result.primary.response {
 			object["response"] = .string(response)
 		}
+		if let metadata = result.primary.providerMetadata {
+			object["provider_metadata"] = providerMetadataJSON(metadata)
+		}
 		if let failure = result.primary.failure {
 			object["error"] = failureJSON(failure)
 		}
@@ -759,7 +813,32 @@ public actor HeadlessToolCatalog {
 			"provider": .string("openai_compatible")
 		]
 		if let response = result.response { object["response"] = .string(response) }
+		if let metadata = result.providerMetadata { object["provider_metadata"] = providerMetadataJSON(metadata) }
 		if let failure = result.failure { object["error"] = failureJSON(failure) }
+		return .object(object)
+	}
+
+	private func providerMetadataJSON(_ metadata: HeadlessOracleProviderMetadata) -> JSONValue {
+		var object: [String: JSONValue] = [
+			"http_status": .int(metadata.httpStatus),
+			"latency_ms": .int(metadata.latencyMilliseconds)
+		]
+		if let responseID = metadata.responseID { object["id"] = .string(responseID) }
+		if let requestID = metadata.requestID { object["request_id"] = .string(requestID) }
+		if let observedModelID = metadata.observedModelID { object["model"] = .string(observedModelID) }
+		if let finishReason = metadata.finishReason { object["finish_reason"] = .string(finishReason) }
+		if let conversationID = metadata.conversationID { object["conversation_id"] = .string(conversationID) }
+		if let baselineAssistantMessageID = metadata.baselineAssistantMessageID {
+			object["baseline_assistant_message_id"] = .string(baselineAssistantMessageID)
+		}
+		if let usage = metadata.usage {
+			var usageObject: [String: JSONValue] = [:]
+			if let promptTokens = usage.promptTokens { usageObject["prompt_tokens"] = .int(promptTokens) }
+			if let completionTokens = usage.completionTokens { usageObject["completion_tokens"] = .int(completionTokens) }
+			if let totalTokens = usage.totalTokens { usageObject["total_tokens"] = .int(totalTokens) }
+			object["usage"] = .object(usageObject)
+		}
+		if let recovery = metadata.recovery { object["recovery"] = oracleJSON(recovery) }
 		return .object(object)
 	}
 
@@ -769,7 +848,51 @@ public actor HeadlessToolCatalog {
 			"message": .string(failure.message)
 		]
 		if let httpStatus = failure.httpStatus { object["http_status"] = .int(httpStatus) }
+		if let latencyMilliseconds = failure.latencyMilliseconds { object["latency_ms"] = .int(latencyMilliseconds) }
+		if let requestID = failure.requestID { object["request_id"] = .string(requestID) }
+		if let providerError = failure.providerError {
+			var providerObject: [String: JSONValue] = [:]
+			if let message = providerError.message { providerObject["message"] = .string(message) }
+			if let type = providerError.type { providerObject["type"] = .string(type) }
+			if let param = providerError.param { providerObject["param"] = .string(param) }
+			if let code = providerError.code { providerObject["code"] = .string(code) }
+			if let failureReason = providerError.failureReason { providerObject["failure_reason"] = .string(failureReason) }
+			object["provider_error"] = .object(providerObject)
+		}
+		if let rawErrorBody = failure.rawErrorBody { object["raw_error_body"] = .string(rawErrorBody) }
+		if failure.rawErrorBodyTruncated { object["raw_error_body_truncated"] = .bool(true) }
+		if let recovery = failure.recovery { object["recovery"] = oracleJSON(recovery) }
+		if let retryable = failure.retryable { object["retryable"] = .bool(retryable) }
+		if let retryAfterSeconds = failure.retryAfterSeconds { object["retry_after_seconds"] = .int(retryAfterSeconds) }
 		return .object(object)
+	}
+
+	private func oracleJSON(_ value: HeadlessOracleJSONValue) -> JSONValue {
+		switch value {
+		case .null: return .null
+		case .string(let value): return .string(value)
+		case .int(let value): return .int(value)
+		case .double(let value): return .double(value)
+		case .bool(let value): return .bool(value)
+		case .array(let values): return .array(values.map(oracleJSON))
+		case .object(let object): return .object(object.mapValues(oracleJSON))
+		}
+	}
+
+	private func incompleteContextDetails(_ context: HeadlessWorkspaceContext) -> JSONValue {
+		let visible = context.omissions.prefix(64).map { omission in
+			JSONValue.object([
+				"path": .string(omission.path),
+				"reason": .string(omission.reason.rawValue)
+			])
+		}
+		return .object([
+			"truncated": .bool(context.truncated),
+			"omitted_root_count": .int(context.omittedRootCount),
+			"omission_count": .int(context.omissions.count),
+			"omissions": .array(visible),
+			"additional_omission_count": .int(max(0, context.omissions.count - visible.count))
+		])
 	}
 
 	private func validateArguments(_ args: [String: Value], allowed: Set<String>, tool: String) throws {
@@ -782,6 +905,23 @@ public actor HeadlessToolCatalog {
 	private func requiredText(_ value: Value?, name: String) throws -> String {
 		guard let text = value?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty else {
 			throw HeadlessToolError("Required string argument `\(name)` must not be empty.", code: "invalid_params")
+		}
+		return text
+	}
+
+	private func optionalEvidence(_ value: Value?, name: String, maximumBytes: Int) throws -> String? {
+		guard let value else { return nil }
+		guard let text = value.stringValue else {
+			throw HeadlessToolError("`\(name)` must be a string.", code: "invalid_params")
+		}
+		guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+			throw HeadlessToolError("`\(name)` must not be empty or whitespace-only.", code: "invalid_params")
+		}
+		guard !text.unicodeScalars.contains(where: { $0.value == 0 }) else {
+			throw HeadlessToolError("`\(name)` must not contain NUL.", code: "invalid_params")
+		}
+		guard text.utf8.count <= maximumBytes else {
+			throw HeadlessToolError("`\(name)` exceeds \(maximumBytes) UTF-8 bytes.", code: "invalid_params")
 		}
 		return text
 	}
@@ -805,8 +945,10 @@ public actor HeadlessToolCatalog {
 		return CallTool.Result(content: [.text(text: text, annotations: nil, _meta: nil)], isError: false)
 	}
 
-	private func error(_ message: String, code: String) -> CallTool.Result {
-		let payload = JSONValue.object(["ok": .bool(false), "code": .string(code), "message": .string(message)])
+	private func error(_ message: String, code: String, details: JSONValue? = nil) -> CallTool.Result {
+		var object: [String: JSONValue] = ["ok": .bool(false), "code": .string(code), "message": .string(message)]
+		if let details { object["details"] = details }
+		let payload = JSONValue.object(object)
 		let data = (try? encoder.encode(payload)) ?? Data("{\"ok\":false}".utf8)
 		let text = String(data: data, encoding: .utf8) ?? message
 		return CallTool.Result(content: [.text(text: text, annotations: nil, _meta: nil)], isError: true)
@@ -941,7 +1083,8 @@ public actor HeadlessToolCatalog {
 				"type": .string("object"),
 				"properties": .object(properties),
 				"required": .array(required.map { .string($0) }),
-				"additionalProperties": .bool(additionalProperties)
+				"additionalProperties": .bool(additionalProperties),
+				PortableContract.toolSchemaVersionKeyword: .string(PortableContract.toolSchemaVersion)
 			]),
 			annotations: .init(
 				readOnlyHint: !writeToolNames.contains(name),
@@ -953,7 +1096,7 @@ public actor HeadlessToolCatalog {
 	}
 }
 
-private enum BuilderResponseType {
+private enum BuilderResponseType: Equatable {
 	case clarify
 	case generated(HeadlessOracleMode)
 }
@@ -961,10 +1104,12 @@ private enum BuilderResponseType {
 private struct HeadlessToolError: Error, Sendable {
 	let message: String
 	let code: String
+	let details: JSONValue?
 
-	init(_ message: String, code: String) {
+	init(_ message: String, code: String, details: JSONValue? = nil) {
 		self.message = message
 		self.code = code
+		self.details = details
 	}
 }
 
@@ -987,8 +1132,10 @@ private struct SearchMatcher {
 }
 
 private enum JSONValue: Codable, Equatable, Sendable {
+	case null
 	case string(String)
 	case int(Int)
+	case double(Double)
 	case bool(Bool)
 	case array([JSONValue])
 	case object([String: JSONValue])
@@ -996,8 +1143,10 @@ private enum JSONValue: Codable, Equatable, Sendable {
 	func encode(to encoder: Encoder) throws {
 		var container = encoder.singleValueContainer()
 		switch self {
+		case .null: try container.encodeNil()
 		case .string(let value): try container.encode(value)
 		case .int(let value): try container.encode(value)
+		case .double(let value): try container.encode(value)
 		case .bool(let value): try container.encode(value)
 		case .array(let value): try container.encode(value)
 		case .object(let value): try container.encode(value)
@@ -1006,9 +1155,11 @@ private enum JSONValue: Codable, Equatable, Sendable {
 
 	init(from decoder: Decoder) throws {
 		let container = try decoder.singleValueContainer()
-		if let value = try? container.decode(String.self) { self = .string(value) }
-		else if let value = try? container.decode(Int.self) { self = .int(value) }
+		if container.decodeNil() { self = .null }
+		else if let value = try? container.decode(String.self) { self = .string(value) }
 		else if let value = try? container.decode(Bool.self) { self = .bool(value) }
+		else if let value = try? container.decode(Int.self) { self = .int(value) }
+		else if let value = try? container.decode(Double.self) { self = .double(value) }
 		else if let value = try? container.decode([JSONValue].self) { self = .array(value) }
 		else { self = .object(try container.decode([String: JSONValue].self)) }
 	}

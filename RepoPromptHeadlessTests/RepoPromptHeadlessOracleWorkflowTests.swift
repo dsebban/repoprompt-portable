@@ -16,6 +16,7 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		XCTAssertEqual(requests.count, 2)
 		XCTAssertEqual(Set(requests.map(\.lane.rawValue)), Set(["primary", "secondary"]))
 		XCTAssertEqual(requests.map(\.model), ["same", "same"])
+		XCTAssertEqual(requests.map(\.reasoningEffort), ["xhigh", "xhigh"])
 		XCTAssertEqual(requests[0].userPrompt, requests[1].userPrompt)
 		XCTAssertEqual(requests[0].pairID, requests[1].pairID)
 		XCTAssertEqual(result.pairStatus, .completed)
@@ -39,8 +40,10 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		XCTAssertEqual(completedLanes, [.secondary, .primary])
 		XCTAssertEqual(result.primary.lane, .primary)
 		XCTAssertEqual(result.primary.response, "slow primary")
+		XCTAssertEqual(result.primary.providerMetadata?.observedModelID, "primary-model")
 		XCTAssertEqual(result.secondary.lane, .secondary)
 		XCTAssertEqual(result.secondary.response, "fast secondary")
+		XCTAssertEqual(result.secondary.providerMetadata?.observedModelID, "secondary-model")
 	}
 
 	func testIndependentPartialFailureDoesNotCancelSibling() async throws {
@@ -97,6 +100,24 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		XCTAssertEqual(result.secondary.failure?.code, "invalid_response")
 	}
 
+	func testEmptyCompletionRetainsProviderMetadataOnFailedLane() async throws {
+		let provider = RecordingOracleProvider(
+			primary: .response("   "),
+			secondary: .response("secondary answer")
+		)
+		let result = try await makeWorkflow(provider: provider).execute(
+			mode: .chat,
+			request: "answer",
+			context: try emptyContext()
+		)
+
+		XCTAssertEqual(result.primary.status, .failed)
+		XCTAssertEqual(result.primary.failure?.code, "empty_response")
+		XCTAssertEqual(result.primary.providerMetadata?.httpStatus, 200)
+		XCTAssertEqual(result.primary.providerMetadata?.conversationID, "conversation-primary")
+		XCTAssertEqual(result.secondary.status, .completed)
+	}
+
 	func testParentCancellationReachesBothProviderRequests() async throws {
 		let provider = CancellingOracleProvider()
 		let workflow = try makeWorkflow(provider: provider)
@@ -125,7 +146,8 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		let configuration = try HeadlessOracleConfiguration(
 			endpoint: XCTUnwrap(URL(string: "https://provider.example/v1/chat/completions")),
 			primaryModel: primaryModel,
-			secondaryModel: secondaryModel
+			secondaryModel: secondaryModel,
+			reasoningEffort: "xhigh"
 		)
 		return HeadlessOracleWorkflow(configuration: configuration, provider: provider)
 	}
@@ -165,7 +187,7 @@ private actor RecordingOracleProvider: HeadlessOracleProvider {
 		self.secondaryDelayNanoseconds = secondaryDelayNanoseconds
 	}
 
-	func complete(_ request: HeadlessOracleProviderRequest) async throws -> String {
+	func complete(_ request: HeadlessOracleProviderRequest) async throws -> HeadlessOracleProviderCompletion {
 		requests.append(request)
 		while requests.count < 2 {
 			try await Task.sleep(nanoseconds: 1_000_000)
@@ -175,7 +197,22 @@ private actor RecordingOracleProvider: HeadlessOracleProvider {
 		completions.append(request.lane)
 		let outcome = request.lane == .primary ? primaryOutcome : secondaryOutcome
 		switch outcome {
-		case .response(let response): return response
+		case .response(let response):
+			return HeadlessOracleProviderCompletion(
+				content: response,
+				metadata: HeadlessOracleProviderMetadata(
+					httpStatus: 200,
+					latencyMilliseconds: request.lane == .primary ? 50 : 5,
+					responseID: "chatcmpl-\(request.lane.rawValue)",
+					requestID: "chatcmpl-\(request.lane.rawValue)",
+					observedModelID: request.model,
+					finishReason: "stop",
+					usage: nil,
+					conversationID: "conversation-\(request.lane.rawValue)",
+					baselineAssistantMessageID: nil,
+					recovery: nil
+				)
+			)
 		case .failure(let failure): throw failure
 		}
 	}
@@ -188,7 +225,7 @@ private actor CancellingOracleProvider: HeadlessOracleProvider {
 	private var arrivals = 0
 	private var cancellations = 0
 
-	func complete(_ request: HeadlessOracleProviderRequest) async throws -> String {
+	func complete(_ request: HeadlessOracleProviderRequest) async throws -> HeadlessOracleProviderCompletion {
 		_ = request
 		arrivals += 1
 		do {

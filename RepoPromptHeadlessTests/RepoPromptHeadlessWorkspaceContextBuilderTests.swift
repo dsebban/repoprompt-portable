@@ -30,6 +30,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		XCTAssertTrue(context.content.contains("one"))
 		XCTAssertTrue(context.content.contains("three\nfour"))
 		XCTAssertLessThanOrEqual(context.contentByteCount, 4_096)
+		XCTAssertTrue(context.isCompleteForProvider)
 	}
 
 	func testBudgetSkipsOversizedEntriesAndContinuesWithoutReadingSparseFile() throws {
@@ -54,6 +55,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		XCTAssertTrue(context.content.contains("small sentinel"))
 		XCTAssertTrue(context.omissions.contains { $0.path == "budget.txt" && $0.reason == .budgetExceeded })
 		XCTAssertTrue(context.omissions.contains { $0.path == "sparse.txt" && $0.reason == .sourceTooLarge })
+		XCTAssertFalse(context.isCompleteForProvider)
 	}
 
 	func testEmptySelectionAndDeterministicOmissions() throws {
@@ -65,6 +67,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		XCTAssertTrue(empty.entries.isEmpty)
 		XCTAssertTrue(empty.content.contains("No readable files are selected."))
 		XCTAssertLessThanOrEqual(empty.contentByteCount, 1_024)
+		XCTAssertTrue(empty.isCompleteForProvider)
 
 		let directory = root.appendingPathComponent("directory", isDirectory: true)
 		let invalid = root.appendingPathComponent("invalid.bin")
@@ -94,6 +97,37 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		XCTAssertTrue(context.omissions.contains { $0.reason == .orphanSlice })
 		XCTAssertTrue(context.omissions.contains { $0.reason == .autoCodemapUnsupported })
 		XCTAssertFalse(context.content.contains("orphan"))
+		XCTAssertFalse(context.isCompleteForProvider)
+	}
+
+	func testOverLimitPersistedSnapshotIsIncompleteAndNeverDropsSliceIntentToFullFile() throws {
+		let root = try temporaryDirectory()
+		var slices: [String: [LineRange]] = [:]
+		for index in 0 ... HeadlessWorkspaceContextBuilder.maximumSelectionEntries {
+			let path = root.appendingPathComponent("slice-\(index).txt").path
+			slices[path] = [LineRange(start: 2, end: 2)]
+		}
+		let included = Set(slices.prefix(HeadlessWorkspaceContextBuilder.maximumSelectionEntries).map(\.key))
+		let droppedPath = try XCTUnwrap(slices.keys.first { !included.contains($0) })
+		try "FULL_FILE_MUST_NOT_APPEAR".write(toFile: droppedPath, atomically: true, encoding: .utf8)
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(selectedPaths: [droppedPath], slices: slices),
+			maximumBytes: 4_096
+		)
+		XCTAssertTrue(context.truncated)
+		XCTAssertFalse(context.isCompleteForProvider)
+		XCTAssertFalse(context.content.contains("FULL_FILE_MUST_NOT_APPEAR"))
+		XCTAssertTrue(context.omissions.contains { $0.path.contains((droppedPath as NSString).lastPathComponent) && $0.reason == .invalidSlice })
+
+		let oversizedSelection = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(
+				selectedPaths: Array(repeating: droppedPath, count: HeadlessWorkspaceContextBuilder.maximumSelectionEntries + 1)
+			),
+			maximumBytes: 4_096
+		)
+		XCTAssertTrue(oversizedSelection.truncated)
+		XCTAssertFalse(oversizedSelection.isCompleteForProvider)
 	}
 
 	func testInRootSymlinkEscapingRootIsNeverRead() throws {
@@ -112,6 +146,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		XCTAssertTrue(context.entries.isEmpty)
 		XCTAssertFalse(context.omissions.isEmpty)
 		XCTAssertFalse(context.content.contains("OUTSIDE_SECRET_SENTINEL"))
+		XCTAssertFalse(context.isCompleteForProvider)
 	}
 
 	func testEmptyAndInvalidPersistedSlicesNeverExpandToFullFile() throws {

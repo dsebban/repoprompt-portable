@@ -6,6 +6,7 @@ public enum HeadlessExitCode: Int32, Sendable {
 	case usage = 64
 	case configuration = 78
 	case runtime = 70
+	case cannotCreate = 73
 }
 
 public struct HeadlessRuntimeError: Error, CustomStringConvertible, Sendable {

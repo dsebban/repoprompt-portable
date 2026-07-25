@@ -45,6 +45,7 @@ struct HeadlessWorkspaceContext: Equatable, Sendable {
 	let omittedRootCount: Int
 
 	var contentByteCount: Int { content.utf8.count }
+	var isCompleteForProvider: Bool { !truncated && omittedRootCount == 0 && omissions.isEmpty }
 }
 
 struct HeadlessWorkspaceContextBuilder: Sendable {
@@ -89,6 +90,7 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 		}
 
 		var sliceMap: [String: [LineRange]] = [:]
+		let sliceIntentPaths = Set(selection.slices.keys.compactMap { try? resolver.lexicalPath($0) })
 		var invalidSliceKeys: [HeadlessWorkspaceContext.Omission] = []
 		var acceptedRangeCount = 0
 		for (rawPath, ranges) in selection.slices.prefix(Self.maximumSelectionEntries) {
@@ -122,6 +124,7 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 				omissions.append(.init(path: rawPath, reason: .outsideWorkspace))
 			}
 		}
+		if selection.selectedPaths.count > Self.maximumSelectionEntries { truncated = true }
 
 		for path in selectedPaths {
 			do {
@@ -136,7 +139,7 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 					continue
 				}
 
-				let hasSliceEntry = sliceMap[path] != nil
+				let hasSliceEntry = sliceIntentPaths.contains(path)
 				let ranges = (sliceMap[path] ?? []).sorted {
 					$0.start == $1.start ? $0.end < $1.end : $0.start < $1.start
 				}

@@ -4,6 +4,14 @@ import MCP
 import XCTest
 
 final class RepoPromptHeadlessTests: XCTestCase {
+	func testPortableInitializeInstructionsDescribeExplicitSelectionContract() {
+		let instructions = HeadlessMCPService.initializeInstructions
+		XCTAssertTrue(instructions.contains("manage_selection is the only selection mutation interface"))
+		XCTAssertTrue(instructions.contains("context_builder renders only the current explicit"))
+		XCTAssertTrue(instructions.contains("oracle_send always snapshots and attaches the current explicit selection"))
+		XCTAssertTrue(instructions.contains("Portable tool schema version: \(PortableContract.toolSchemaVersion)."))
+	}
+
 	func testOptionsParseRootsAndNoPersist() throws {
 		let id = UUID()
 		let options = try HeadlessOptions.parse([

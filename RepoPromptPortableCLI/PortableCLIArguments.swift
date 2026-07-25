@@ -25,14 +25,22 @@ public struct PortableCLIArguments: Equatable, Sendable {
 
 	public let options: HeadlessOptions
 	public let commands: [PortableCLICommand]
+	public let exportPath: String?
 	public let help: Bool
 
 	public static func parse(_ arguments: [String]) throws -> PortableCLIArguments {
 		var options = HeadlessOptions(persist: false, allowWrites: false)
 		var expressions: [String] = []
 		var implicitArguments: [String] = []
+		var exportPath: String?
 		var help = false
 		var index = 0
+
+		func setExportPath(_ path: String) throws {
+			guard exportPath == nil else { throw PortableCLIUsageError("--export-jsonl may be specified only once.") }
+			guard !path.isEmpty else { throw PortableCLIUsageError("Missing value for --export-jsonl.") }
+			exportPath = path
+		}
 
 		func requireValue(for option: String) throws -> String {
 			let valueIndex = index + 1
@@ -60,6 +68,10 @@ public struct PortableCLIArguments: Equatable, Sendable {
 				options.sessionID = try parseSessionID(try requireValue(for: argument))
 			case let value where value.hasPrefix("--session-id="):
 				options.sessionID = try parseSessionID(String(value.dropFirst("--session-id=".count)))
+			case "--export-jsonl":
+				try setExportPath(try requireValue(for: argument))
+			case let value where value.hasPrefix("--export-jsonl="):
+				try setExportPath(String(value.dropFirst("--export-jsonl=".count)))
 			case "-e", "--exec":
 				expressions.append(try requireValue(for: argument))
 			case let value where value.hasPrefix("--exec="):
@@ -73,7 +85,7 @@ public struct PortableCLIArguments: Equatable, Sendable {
 		}
 
 		if help {
-			return PortableCLIArguments(options: options, commands: [], help: true)
+			return PortableCLIArguments(options: options, commands: [], exportPath: exportPath, help: true)
 		}
 		guard expressions.isEmpty || implicitArguments.isEmpty else {
 			throw PortableCLIUsageError("Do not mix an implicit command with -e/--exec commands.")
@@ -92,7 +104,7 @@ public struct PortableCLIArguments: Equatable, Sendable {
 			commands = [try parseCommand(name: implicitArguments[0], json: implicitArguments.count == 2 ? implicitArguments[1] : nil)]
 		}
 
-		return PortableCLIArguments(options: options, commands: commands, help: false)
+		return PortableCLIArguments(options: options, commands: commands, exportPath: exportPath, help: false)
 	}
 
 	public static func usage(executable: String) -> String {
@@ -101,10 +113,16 @@ public struct PortableCLIArguments: Equatable, Sendable {
 			\(executable) [global options] <exact-tool-name> ['<JSON object>']
 			\(executable) [global options] -e '<exact-tool-name> [JSON object]' [-e ...]
 
+		Contract:
+			context_builder accepts clarify|plan|review; clarify is local.
+			Provider-backed builder modes and oracle_send always attach the complete current explicit selection and run Primary/Secondary concurrently.
+			review_diff and clarify_handoff are caller-supplied untrusted evidence sent to both lanes.
+
 		Global options:
 			--root <path>              Repeatable workspace root; defaults to the current directory.
 			--workspace-name <name>    Optional workspace display name.
 			--session-id <uuid>        Optional in-process session/context UUID.
+			--export-jsonl <path>      Atomically create a new mode-0600 JSONL file; never overwrites.
 			-e, --exec <command>       Execute a tool command; repeat to share in-process selection state.
 			-h, --help                 Show this help.
 
