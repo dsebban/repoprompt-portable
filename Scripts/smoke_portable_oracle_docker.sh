@@ -11,6 +11,7 @@ TOKEN="portable-oracle-smoke-token"
 NETWORK="rp-portable-oracle-${RANDOM}-$$"
 FIXTURE_CONTAINER="rp-portable-oracle-fixture-${RANDOM}-$$"
 FIXTURE_DIR=""
+SMOKE_ARTIFACT_DIR=""
 EXPORT_DIR=""
 
 cleanup() {
@@ -18,6 +19,13 @@ cleanup() {
 	docker network rm "$NETWORK" >/dev/null 2>&1 || true
 	if [[ -n "$FIXTURE_DIR" && -d "$FIXTURE_DIR" ]]; then
 		python3 - "$FIXTURE_DIR" <<'PY'
+import shutil
+import sys
+shutil.rmtree(sys.argv[1], ignore_errors=True)
+PY
+	fi
+	if [[ -n "$SMOKE_ARTIFACT_DIR" && -d "$SMOKE_ARTIFACT_DIR" ]]; then
+		python3 - "$SMOKE_ARTIFACT_DIR" <<'PY'
 import shutil
 import sys
 shutil.rmtree(sys.argv[1], ignore_errors=True)
@@ -117,6 +125,36 @@ printf '%s\n' \
 	> "$FIXTURE_DIR/fixture.txt"
 chmod 0755 "$FIXTURE_DIR"
 chmod 0644 "$FIXTURE_DIR/fixture.txt"
+SMOKE_ARTIFACT_DIR="$(mktemp -d "$REPO_ROOT/.build/portable-oracle-artifacts.XXXXXX")"
+workspace_hash() {
+	python3 - "$FIXTURE_DIR" <<'PY'
+import hashlib
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+digest = hashlib.sha256()
+for path in sorted(root.rglob("*"), key=lambda item: item.relative_to(root).as_posix()):
+	relative = path.relative_to(root).as_posix()
+	if path.is_dir():
+		digest.update(f"directory\0{relative}\0".encode())
+	elif path.is_file():
+		digest.update(f"file\0{relative}\0".encode())
+		digest.update(path.read_bytes())
+	else:
+		raise AssertionError(f"unexpected workspace entry: {relative}")
+print(digest.hexdigest())
+PY
+}
+ORIGINAL_WORKSPACE_HASH="$(workspace_hash)"
+assert_workspace_unchanged() {
+	local actual
+	actual="$(workspace_hash)"
+	[[ "$actual" == "$ORIGINAL_WORKSPACE_HASH" ]] || {
+		echo "portable workspace changed: expected $ORIGINAL_WORKSPACE_HASH, got $actual" >&2
+		exit 1
+	}
+}
 
 python3 "$REPO_ROOT/Scripts/portable_oracle_mcp_smoke.py" \
 	--timeout-seconds "$SMOKE_TIMEOUT" \
@@ -135,16 +173,23 @@ python3 "$REPO_ROOT/Scripts/portable_oracle_mcp_smoke.py" \
 		"$IMAGE" \
 		--no-persist \
 		--root /workspace
+assert_workspace_unchanged
 
-CLI_STDOUT="$FIXTURE_DIR/cli.stdout"
-CLI_STDERR="$FIXTURE_DIR/cli.stderr"
-if hardened_run --network none \
+CLI_STDOUT="$SMOKE_ARTIFACT_DIR/cli.stdout"
+CLI_STDERR="$SMOKE_ARTIFACT_DIR/cli.stderr"
+if hardened_run --network "$NETWORK" \
 	--entrypoint /usr/local/bin/repoprompt-portable-cli \
 	--mount "type=bind,src=$FIXTURE_DIR,dst=/workspace,readonly" \
+	--env "REPOPROMPT_ORACLE_ENDPOINT=http://portable-oracle-fixture:8080/v1/chat/completions" \
+	--env "REPOPROMPT_ORACLE_PRIMARY_MODEL=gpt-5.6-sol" \
+	--env "REPOPROMPT_ORACLE_SECONDARY_MODEL=openrouter/team:gpt-5.6-sol[variant=secondary]" \
+	--env "REPOPROMPT_ORACLE_REASONING_EFFORT=xhigh" \
+	--env "REPOPROMPT_ORACLE_API_KEY=$TOKEN" \
+	--env "REPOPROMPT_ORACLE_TIMEOUT_SECONDS=2700" \
 	"$IMAGE" \
 	--root /workspace \
 	-e 'manage_selection {"op":"set","mode":"full","paths":["fixture.txt"]}' \
-	-e 'context_builder {"instructions":"Assemble the selected fixture.","response_type":"clarify"}' \
+	-e 'context_builder {"instructions":"Produce direct CLI Pro Edit instructions for the selected fixture sentinel.","response_type":"pro_edit"}' \
 	>"$CLI_STDOUT" 2>"$CLI_STDERR"; then
 	:
 else
@@ -168,26 +213,29 @@ PY
 	exit 1
 fi
 
-python3 - "$CLI_STDOUT" <<'PY'
+python3 - "$CLI_STDOUT" "$REPO_ROOT/Scripts" <<'PY'
 import json
 import pathlib
 import sys
+
+sys.path.insert(0, sys.argv[2])
+from portable_oracle_mcp_smoke import assert_pro_edit_pair
 
 lines = pathlib.Path(sys.argv[1]).read_text().splitlines()
 assert len(lines) == 2 and all(lines), lines
 rows = [json.loads(line) for line in lines]
 assert rows[0]["selection"]["selected_paths"] == ["fixture.txt"], rows[0]
-assert rows[1]["ok"] is True, rows[1]
-assert rows[1]["status"] == "context_built", rows[1]
-assert rows[1]["response_type"] == "clarify", rows[1]
+assert rows[1]["prompt"] == "Produce direct CLI Pro Edit instructions for the selected fixture sentinel.", rows[1]
 assert "PORTABLE_ORACLE_FIXTURE_SENTINEL" in rows[1]["workspace_context"]["content"], rows[1]
-print("installed portable CLI clarify smoke passed")
+assert_pro_edit_pair(rows[1])
+print("installed portable CLI Pro Edit smoke passed")
 PY
+assert_workspace_unchanged
 
 EXPORT_DIR="$(mktemp -d "$REPO_ROOT/.build/portable-export-smoke.XXXXXX")"
 chmod 0700 "$EXPORT_DIR"
-MAPPED_STDOUT="$FIXTURE_DIR/mapped.stdout"
-MAPPED_STDERR="$FIXTURE_DIR/mapped.stderr"
+MAPPED_STDOUT="$SMOKE_ARTIFACT_DIR/mapped.stdout"
+MAPPED_STDERR="$SMOKE_ARTIFACT_DIR/mapped.stderr"
 hardened_run --network none \
 	--user "$(id -u):$(id -g)" \
 	--env HOME=/tmp \
@@ -259,23 +307,37 @@ print(urllib.request.urlopen(request, timeout=2).read().decode("utf-8"))
 PY
 )"
 
+successful_provider_calls=(mcp_plan mcp_pro_edit mcp_oracle_review cli_pro_edit)
+forced_error_provider_calls=(mcp_forced_error)
+SUCCESSFUL_PROVIDER_PAIRS="${#successful_provider_calls[@]}"
+FORCED_ERROR_PROVIDER_PAIRS="${#forced_error_provider_calls[@]}"
+TOTAL_PROVIDER_PAIRS="$((SUCCESSFUL_PROVIDER_PAIRS + FORCED_ERROR_PROVIDER_PAIRS))"
+EXPECTED_TOTAL_REQUESTS="$((TOTAL_PROVIDER_PAIRS * 2))"
+EXPECTED_FORCED_ERROR_REQUESTS="$((FORCED_ERROR_PROVIDER_PAIRS * 2))"
+
+SUCCESSFUL_PROVIDER_PAIRS="$SUCCESSFUL_PROVIDER_PAIRS" \
+TOTAL_PROVIDER_PAIRS="$TOTAL_PROVIDER_PAIRS" \
+EXPECTED_TOTAL_REQUESTS="$EXPECTED_TOTAL_REQUESTS" \
+EXPECTED_FORCED_ERROR_REQUESTS="$EXPECTED_FORCED_ERROR_REQUESTS" \
 COUNTERS_JSON="$COUNTERS_JSON" python3 - <<'PY'
 import json
 import os
 
 counters = json.loads(os.environ["COUNTERS_JSON"])
+successful_pairs = int(os.environ["SUCCESSFUL_PROVIDER_PAIRS"])
+total_pairs = int(os.environ["TOTAL_PROVIDER_PAIRS"])
 expected = {
-	"total_requests": 6,
-	"primary_requests": 3,
-	"secondary_requests": 3,
-	"completed_pairs": 2,
-	"forced_error_requests": 2,
+	"total_requests": int(os.environ["EXPECTED_TOTAL_REQUESTS"]),
+	"primary_requests": total_pairs,
+	"secondary_requests": total_pairs,
+	"completed_pairs": successful_pairs,
+	"forced_error_requests": int(os.environ["EXPECTED_FORCED_ERROR_REQUESTS"]),
 	"barrier_timeouts": 0,
 	"authorization_failures": 0,
 	"invalid_requests": 0,
 	"duplicate_lane_requests": 0,
 	"prompt_mismatches": 0,
-	"unique_prompt_hashes": 2,
+	"unique_prompt_hashes": successful_pairs,
 	"active_pairs": 0,
 }
 assert counters == expected, {"expected": expected, "actual": counters}

@@ -5,8 +5,8 @@ This release publishes the immutable multi-architecture image `@@IMAGE@@`.
 ## Current contract
 
 - Portable software `@@SOFTWARE_VERSION@@`; tool schema `@@SCHEMA_VERSION@@` on all seven MCP tools.
-- `context_builder` supports local `clarify` and provider-backed `plan|review` over the explicit selection.
-- `oracle_send` always attaches the explicit selection; incomplete provider context fails closed before HTTP.
+- `context_builder` supports local `clarify` and provider-backed `plan|review|pro_edit` over the explicit selection; `pro_edit` returns read-only instructions and never writes, delegates, executes, or applies.
+- `oracle_send` remains limited to `chat|question|plan|review`, always attaches the explicit selection, and fails closed before HTTP when provider context is incomplete.
 - Review calls accept bounded caller-supplied `review_diff`; `oracle_send` also accepts `clarify_handoff`. Both are untrusted evidence sent to both concurrent lanes.
 - Surf-compatible bearer authentication, top-level `reasoning_effort`, compound model IDs such as `gpt-5.6-sol-xhigh`, structured completion/error/recovery metadata, and timeouts through 3600 seconds are supported.
 - The direct CLI supports atomic, no-overwrite, mode-0600 `--export-jsonl` artifacts.

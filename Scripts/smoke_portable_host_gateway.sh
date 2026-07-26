@@ -118,23 +118,37 @@ request = urllib.request.Request(
 print(urllib.request.urlopen(request, timeout=2).read().decode())
 PY
 )"
+successful_provider_calls=(mcp_plan mcp_pro_edit mcp_oracle_review)
+forced_error_provider_calls=(mcp_forced_error)
+SUCCESSFUL_PROVIDER_PAIRS="${#successful_provider_calls[@]}"
+FORCED_ERROR_PROVIDER_PAIRS="${#forced_error_provider_calls[@]}"
+TOTAL_PROVIDER_PAIRS="$((SUCCESSFUL_PROVIDER_PAIRS + FORCED_ERROR_PROVIDER_PAIRS))"
+EXPECTED_TOTAL_REQUESTS="$((TOTAL_PROVIDER_PAIRS * 2))"
+EXPECTED_FORCED_ERROR_REQUESTS="$((FORCED_ERROR_PROVIDER_PAIRS * 2))"
+
+SUCCESSFUL_PROVIDER_PAIRS="$SUCCESSFUL_PROVIDER_PAIRS" \
+TOTAL_PROVIDER_PAIRS="$TOTAL_PROVIDER_PAIRS" \
+EXPECTED_TOTAL_REQUESTS="$EXPECTED_TOTAL_REQUESTS" \
+EXPECTED_FORCED_ERROR_REQUESTS="$EXPECTED_FORCED_ERROR_REQUESTS" \
 COUNTERS_JSON="$COUNTERS_JSON" python3 - <<'PY'
 import json
 import os
 
 actual = json.loads(os.environ["COUNTERS_JSON"])
+successful_pairs = int(os.environ["SUCCESSFUL_PROVIDER_PAIRS"])
+total_pairs = int(os.environ["TOTAL_PROVIDER_PAIRS"])
 expected = {
-	"total_requests": 6,
-	"primary_requests": 3,
-	"secondary_requests": 3,
-	"completed_pairs": 2,
-	"forced_error_requests": 2,
+	"total_requests": int(os.environ["EXPECTED_TOTAL_REQUESTS"]),
+	"primary_requests": total_pairs,
+	"secondary_requests": total_pairs,
+	"completed_pairs": successful_pairs,
+	"forced_error_requests": int(os.environ["EXPECTED_FORCED_ERROR_REQUESTS"]),
 	"barrier_timeouts": 0,
 	"authorization_failures": 1,
 	"invalid_requests": 0,
 	"duplicate_lane_requests": 0,
 	"prompt_mismatches": 0,
-	"unique_prompt_hashes": 2,
+	"unique_prompt_hashes": successful_pairs,
 	"active_pairs": 0,
 }
 assert actual == expected, {"expected": expected, "actual": actual}

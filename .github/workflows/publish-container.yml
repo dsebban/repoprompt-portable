@@ -56,7 +56,7 @@ jobs:
             echo "image_version=$image_version"
           } >> "$GITHUB_OUTPUT"
       - name: Verify release source policy
-        run: python3 Scripts/verify_portable_release.py source --expected-version "${{ steps.vars.outputs.contract_version }}"
+        run: python3 Scripts/verify_portable_release.py source --expected-version "${{ steps.vars.outputs.contract_version }}" --expected-schema-version "${{ steps.vars.outputs.schema_version }}"
       - name: Test release verifier
         run: python3 Scripts/test_verify_portable_release.py
       - name: Check script syntax

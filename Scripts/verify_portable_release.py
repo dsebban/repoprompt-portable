@@ -40,10 +40,10 @@ def load_json(path: Path) -> Any:
 		raise VerificationError(f"cannot read JSON {path}: {error}") from error
 
 
-def contract_version(path: Path) -> str:
+def contract_value(path: Path, name: str) -> str:
 	text = path.read_text(encoding="utf-8")
-	match = re.search(r'public static let softwareVersion = "([^"]+)"', text)
-	require(match is not None, f"softwareVersion is missing from {path}")
+	match = re.search(rf'public static let {name} = "([^"]+)"', text)
+	require(match is not None, f"{name} is missing from {path}")
 	return match.group(1)
 
 
@@ -77,9 +77,16 @@ def verify_action_pins(path: Path) -> None:
 		require(bool(name) and FULL_SHA_RE.fullmatch(ref) is not None, f"action must use a full commit SHA in {path}: {action}")
 
 
-def verify_source(root: Path, expected_version: str) -> None:
-	actual_version = contract_version(root / "RepoPromptHeadless/PortableContract.swift")
+def verify_source(root: Path, expected_version: str, expected_schema_version: str | None = None) -> None:
+	contract = root / "RepoPromptHeadless/PortableContract.swift"
+	actual_version = contract_value(contract, "softwareVersion")
+	actual_schema_version = contract_value(contract, "toolSchemaVersion")
 	require(actual_version == expected_version, f"software version is {actual_version}, expected {expected_version}")
+	if expected_schema_version is not None:
+		require(
+			actual_schema_version == expected_schema_version,
+			f"tool schema version is {actual_schema_version}, expected {expected_schema_version}",
+		)
 	verify_credential_free_config(root / "opencode.docker.json")
 	workflows = sorted((root / ".github/workflows").glob("*.y*ml"))
 	require(bool(workflows), "no GitHub Actions workflows found")
@@ -100,6 +107,9 @@ def verify_source(root: Path, expected_version: str) -> None:
 		re.search(r'PYTHON_IMAGE=.*python:[^}" ]+@sha256:[0-9a-f]{64}', smoke) is not None,
 		"Docker smoke fixture image default is not digest-pinned",
 	)
+	mcp_smoke = (root / "Scripts/portable_oracle_mcp_smoke.py").read_text(encoding="utf-8")
+	require(f'SOFTWARE_VERSION = "{actual_version}"' in mcp_smoke, "MCP smoke software version is stale")
+	require(f'TOOL_SCHEMA_VERSION = "{actual_schema_version}"' in mcp_smoke, "MCP smoke tool schema version is stale")
 
 	release_notes = (root / ".github/release-assets/RELEASE_NOTES.md.in").read_text(encoding="utf-8")
 	for placeholder in ("@@VERSION@@", "@@SOFTWARE_VERSION@@", "@@SCHEMA_VERSION@@", "@@IMAGE@@"):
@@ -219,6 +229,7 @@ def main() -> int:
 	source = subparsers.add_parser("source")
 	source.add_argument("--root", type=Path, default=ROOT)
 	source.add_argument("--expected-version", required=True)
+	source.add_argument("--expected-schema-version")
 
 	image = subparsers.add_parser("image")
 	image.add_argument("--image", required=True)
@@ -242,7 +253,7 @@ def main() -> int:
 	args = parser.parse_args()
 	try:
 		if args.command == "source":
-			verify_source(args.root.resolve(), args.expected_version)
+			verify_source(args.root.resolve(), args.expected_version, args.expected_schema_version)
 		elif args.command == "image":
 			verify_image(
 				args.image,

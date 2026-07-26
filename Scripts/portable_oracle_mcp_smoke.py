@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import select
 from dataclasses import dataclass
 import subprocess
@@ -12,11 +13,12 @@ import sys
 import tempfile
 import time
 from typing import Any
+import xml.etree.ElementTree as ET
 
 
 PROTOCOL_VERSION = "2025-03-26"
-SOFTWARE_VERSION = "0.2.0"
-TOOL_SCHEMA_VERSION = "1.0.0"
+SOFTWARE_VERSION = "0.3.0"
+TOOL_SCHEMA_VERSION = "1.1.0"
 TOOL_SCHEMA_VERSION_KEY = "x-repoprompt-portable-schema-version"
 EXPECTED_TOOL_NAMES = {
 	"bind_context",
@@ -151,6 +153,70 @@ def nested_keys(value: Any) -> set[str]:
 	return set()
 
 
+def assert_pro_edit_artifact(value: Any, lane: str) -> None:
+	assert isinstance(value, str), value
+	match = re.fullmatch(
+		r'\s*<chatName="([^"]+)"/>\s*<Plan>(.*?)</Plan>\s*(.*)',
+		value,
+		re.DOTALL,
+	)
+	assert match is not None, value
+	chat_name, plan, file_blocks = match.groups()
+	assert chat_name and lane in chat_name.lower(), chat_name
+	assert plan.strip() and lane in plan.lower(), plan
+	root = ET.fromstring(f"<root>{file_blocks}</root>")
+	files = list(root)
+	assert not (root.text or "").strip(), value
+	for file in files:
+		assert not (file.tail or "").strip(), value
+	assert len(files) == 1 and files[0].tag == "file", value
+	file = files[0]
+	assert file.attrib == {"path": "fixture.txt", "action": "delegate edit"}, file.attrib
+	changes = list(file)
+	assert len(changes) == 1 and changes[0].tag == "change", value
+	change = changes[0]
+	assert [child.tag for child in change] == ["description", "content", "complexity"], value
+	description, content, complexity = change
+	assert description.attrib == content.attrib == complexity.attrib == {}, value
+	assert description.text and description.text.strip(), value
+	assert content.text and content.text.strip(), value
+	assert complexity.text is not None and 1 <= int(complexity.text) <= 10, value
+	for element in root.iter():
+		assert element.tag.lower() not in {"execute", "execution", "apply", "applied", "tool_call", "tool_calls"}, value
+		assert not ({key.lower() for key in element.attrib} & {"execute", "execution", "apply", "applied"}), value
+
+
+def assert_pro_edit_pair(value: dict[str, Any]) -> None:
+	assert value.get("ok") is True, value
+	assert value.get("status") == "response_generated", value
+	assert value.get("response_type") == "pro_edit", value
+	assert value.get("pair_status") == "completed", value
+	assert value.get("oracle_decision_policy") == "caller_decides", value
+	assert value.get("model_raw_id") == "gpt-5.6-sol", value
+	results = value.get("oracle_results")
+	assert isinstance(results, dict), value
+	primary = results.get("primary")
+	secondary = results.get("secondary")
+	assert isinstance(primary, dict) and isinstance(secondary, dict), results
+	assert primary.get("oracle_lane") == "primary" and primary.get("status") == "completed", primary
+	assert secondary.get("oracle_lane") == "secondary" and secondary.get("status") == "completed", secondary
+	assert primary.get("model_raw_id") == "gpt-5.6-sol", primary
+	assert secondary.get("model_raw_id") == "openrouter/team:gpt-5.6-sol[variant=secondary]", secondary
+	primary_response = primary.get("response")
+	secondary_response = secondary.get("response")
+	assert_pro_edit_artifact(primary_response, "primary")
+	assert_pro_edit_artifact(secondary_response, "secondary")
+	assert primary_response != secondary_response, results
+	assert value.get("response") == primary_response, value
+	assert value.get("response") != secondary_response, value
+	forbidden = {
+		"execute", "execution", "executed", "apply", "applied", "apply_edits",
+		"file_actions", "tool_call", "tool_calls", "chat_id", "new_chat",
+		"oracle_export_path", "winner", "synthesis",
+	}
+	assert nested_keys(value).isdisjoint(forbidden), value
+
+
 def assert_provider_metadata(value: Any, lane: str, model: str) -> None:
 	assert isinstance(value, dict), value
 	assert value.get("http_status") == 200, value
@@ -204,7 +270,12 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert isinstance(instructions, str), initialized
 	assert "manage_selection is the only selection mutation interface" in instructions, instructions
 	assert "context_builder renders only the current explicit" in instructions, instructions
-	assert "oracle_send always snapshots and attaches the current explicit selection" in instructions, instructions
+	assert "provider-backed plan/review/pro_edit" in instructions, instructions
+	assert "pro_edit produces instructions only and never writes or executes" in instructions, instructions
+	assert (
+		"oracle_send remains limited to chat/question/plan/review, always snapshots and attaches the current explicit selection"
+		in instructions
+	), instructions
 	assert f"Portable tool schema version: {TOOL_SCHEMA_VERSION}." in instructions, instructions
 	client.notify("notifications/initialized")
 
@@ -231,8 +302,11 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert "no context-free mode" in oracle_description, oracle_description
 	builder_properties = tools_by_name["context_builder"]["inputSchema"].get("properties", {})
 	oracle_properties = tools_by_name["oracle_send"]["inputSchema"].get("properties", {})
-	assert "review_diff" in builder_properties, builder_properties
-	assert {"review_diff", "clarify_handoff"}.issubset(oracle_properties), oracle_properties
+	assert set(builder_properties) == {"instructions", "response_type", "review_diff", "max_context_bytes"}, builder_properties
+	assert builder_properties["response_type"].get("enum") == ["clarify", "plan", "review", "pro_edit"], builder_properties
+	assert "pro_edit returns instructions only" in builder_properties["instructions"].get("description", ""), builder_properties
+	assert set(oracle_properties) == {"message", "mode", "review_diff", "clarify_handoff", "max_context_bytes"}, oracle_properties
+	assert oracle_properties["mode"].get("enum") == ["chat", "question", "plan", "review"], oracle_properties
 
 	selection = tool_json(client, "manage_selection", {
 		"op": "set",
@@ -243,6 +317,8 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert isinstance(selected, dict), selection
 	assert selected.get("selected_paths") == ["fixture.txt"], selected
 	assert selected.get("selected_count") == 1, selected
+	source_before = tool_json(client, "read_file", {"path": "fixture.txt"})
+	assert FIXTURE_SENTINEL in source_before.get("content", ""), source_before
 
 	built = tool_json(client, "context_builder", {
 		"instructions": "Assemble the selected fixture source.",
@@ -295,6 +371,32 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert plan.get("response") != plan_secondary_response, plan
 	forbidden = {"chat_id", "new_chat", "oracle_export_path", "winner", "synthesis"}
 	assert nested_keys(plan).isdisjoint(forbidden), plan
+
+	pro_edit_prompt = "Produce read-only Pro Edit instructions for the selected fixture sentinel."
+	pro_edit = tool_json(client, "context_builder", {
+		"instructions": pro_edit_prompt,
+		"response_type": "pro_edit",
+	})
+	assert pro_edit.get("prompt") == pro_edit_prompt, pro_edit
+	assert_pro_edit_pair(pro_edit)
+	assert_provider_metadata(pro_edit.get("provider_metadata"), "primary", "gpt-5.6-sol")
+	pro_edit_results = pro_edit["oracle_results"]
+	assert_provider_metadata(pro_edit_results["primary"].get("provider_metadata"), "primary", "gpt-5.6-sol")
+	assert_provider_metadata(
+		pro_edit_results["secondary"].get("provider_metadata"),
+		"secondary",
+		"openrouter/team:gpt-5.6-sol[variant=secondary]",
+	)
+	pro_edit_workspace = pro_edit.get("workspace_context")
+	assert isinstance(pro_edit_workspace, dict), pro_edit
+	assert FIXTURE_SENTINEL in str(pro_edit_workspace.get("content", "")), pro_edit_workspace
+
+	invalid_oracle_mode = tool_json_outcome(client, "oracle_send", {
+		"message": "Pro Edit must remain unavailable here.",
+		"mode": "pro_edit",
+	})
+	assert invalid_oracle_mode.is_error is True, invalid_oracle_mode.raw_result
+	assert invalid_oracle_mode.value.get("code") == "invalid_params", invalid_oracle_mode.value
 
 	oracle = tool_json(client, "oracle_send", {
 		"message": "Review the selected fixture sentinel.",
@@ -349,6 +451,11 @@ def run_smoke(client: StdioMCPClient) -> None:
 	assert forced_secondary.get("oracle_lane") == "secondary" and forced_secondary.get("status") == "failed", forced_secondary
 	assert_surf_error(forced_primary.get("error"), "primary")
 	assert_surf_error(forced_secondary.get("error"), "secondary")
+
+	source_after = tool_json(client, "read_file", {"path": "fixture.txt"})
+	assert source_after == source_before, {"before": source_before, "after": source_after}
+	selection_after = tool_json(client, "manage_selection", {"op": "get"})
+	assert selection_after.get("selection") == selected, {"before": selected, "after": selection_after}
 
 
 def main() -> int:
