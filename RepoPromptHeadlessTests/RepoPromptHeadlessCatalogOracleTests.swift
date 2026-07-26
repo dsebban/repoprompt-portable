@@ -42,6 +42,13 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 			}
 			XCTAssertEqual(schema["additionalProperties"]?.boolValue, false)
 		}
+		let selectionTool = try XCTUnwrap(tools.first { $0.name == "manage_selection" })
+		guard
+			case .object(let selectionSchema) = selectionTool.inputSchema,
+			case .object(let selectionProperties)? = selectionSchema["properties"]
+		else { return XCTFail("Expected manage_selection properties") }
+		XCTAssertNotNil(selectionProperties["codemap_auto_enabled"])
+
 		let builder = try XCTUnwrap(tools.first { $0.name == "context_builder" })
 		XCTAssertTrue(builder.description?.contains("current explicit in-memory") == true)
 		XCTAssertTrue(builder.description?.contains("never discovers or changes selection") == true)
@@ -89,6 +96,57 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		let denied = await catalog.call(name: "workspace_context", arguments: [:])
 		XCTAssertEqual(denied.isError, true)
 		XCTAssertEqual(try json(denied)["code"] as? String, "policy_denied")
+	}
+
+	func testManageSelectionAddsDetailsWithoutChangingLegacyFieldsOrSchemaVersion() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("source.swift")
+		try Data("one\r\ntwo\r\nthree\r\nfour".utf8).write(to: file)
+		let bootstrap = try await HeadlessWorkspaceBootstrap.bootstrap(
+			options: HeadlessOptions(roots: [root.path], persist: false)
+		)
+		let catalog = HeadlessToolCatalog(
+			roots: bootstrap.roots,
+			session: bootstrap.session,
+			router: bootstrap.router,
+			allowWrites: false
+		)
+
+		let result = await catalog.call(name: "manage_selection", arguments: [
+			"op": .string("set"),
+			"mode": .string("slices"),
+			"codemap_auto_enabled": .bool(false),
+			"slices": .array([.object([
+				"path": .string("source.swift"),
+				"ranges": .array([
+					.object([
+						"start_line": .int(1),
+						"end_line": .int(2),
+						"description": .string("first")
+					]),
+					.object([
+						"start_line": .int(3),
+						"description": .string("next")
+					])
+				])
+			])])
+		])
+		XCTAssertEqual(result.isError, false)
+		let selection = try XCTUnwrap(try json(result)["selection"] as? [String: Any])
+		XCTAssertEqual(selection["auto_codemap_paths"] as? [String], [])
+		XCTAssertEqual(selection["manual_codemap_paths"] as? [String], [])
+		XCTAssertEqual((selection["slices"] as? [String: [String]])?["source.swift"], ["1-3"])
+		XCTAssertEqual(selection["codemap_auto_enabled"] as? Bool, false)
+		let details = try XCTUnwrap(selection["slice_details"] as? [[String: Any]])
+		let ranges = try XCTUnwrap(details.first?["ranges"] as? [[String: Any]])
+		XCTAssertEqual(ranges.first?["description"] as? String, "first; next")
+
+		let built = await catalog.call(name: "context_builder", arguments: ["instructions": .string("inspect")])
+		let workspace = try XCTUnwrap(try json(built)["workspace_context"] as? [String: Any])
+		let content = try XCTUnwrap(workspace["content"] as? String)
+		let expected = "<file_contents>\nFile: source.swift\n(lines 1-3: first; next)\n```swift\none\r\ntwo\r\nthree\r\n\n```\n</file_contents>"
+		XCTAssertEqual(Data(content.utf8), Data(expected.utf8))
+		XCTAssertEqual(PortableContract.toolSchemaVersion, "1.1.0")
 	}
 
 	func testContextBuilderClarifyIsLocalStrictAndPreservesSlicesAndCodemapOmissions() async throws {

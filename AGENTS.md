@@ -2,7 +2,7 @@
 
 ## Cursor Cloud specific instructions
 
-RepoPrompt Portable is a Swift package with two executable products: `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL runner over the same `RepoPromptHeadless` library/catalog. There is no web UI or long-running product HTTP server. See `README.md` and `docs/architecture/portable-oracle-mcp.md` for the current contract.
+RepoPrompt Portable's root Swift package has two executable products: `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL runner over the same `RepoPromptHeadless` library/catalog. The isolated `LinuxDesktop/` package adds the native `repoprompt-linux-desktop` GTK application. There is no web UI or long-running product HTTP server. See `README.md`, `docs/architecture/portable-oracle-mcp.md`, and `docs/architecture/linux-desktop.md` for the current contracts.
 
 Portable software `0.3.0` advertises tool-schema version `1.1.0` on all seven tools. `context_builder` supports local `clarify` plus provider-backed `plan|review|pro_edit`; `oracle_send` remains `chat|question|plan|review` and always attaches the explicit selection. Pro Edit returns two independent opaque instruction artifacts and projects Primary at the top level; portable never parses, validates, delegates, applies, writes, persists, or certifies them. Provider-backed calls fail closed on any omission/truncation. Caller-supplied `review_diff` and `clarify_handoff` are untrusted evidence sent to both concurrent Oracle lanes.
 
@@ -10,7 +10,7 @@ Portable software `0.3.0` advertises tool-schema version `1.1.0` on all seven to
 
 - Swift 6.1 is preinstalled at `/opt/swift`, with `swift`/`swiftc` on the default PATH.
 - `Package.swift` declares only `platforms: [.macOS(.v13)]`, but builds/tests pass on Linux, matching CI's pinned Swift 6.1 Jammy image.
-- `swift package resolve` on Linux may rewrite `Package.resolved` with Linux-only transitive dependencies. Do not commit that churn.
+- `swift package resolve` on Linux may rewrite the root `Package.resolved` with Linux-only transitive dependencies. Do not commit that churn. Desktop dependency updates must use `swift package --package-path LinuxDesktop resolve` and change only `LinuxDesktop/Package.resolved`.
 
 ### Build, test, and run
 
@@ -26,6 +26,17 @@ Portable software `0.3.0` advertises tool-schema version `1.1.0` on all seven to
   `swift run repoprompt-headless --no-persist --root /path/to/workspace`.
 - Provider-free tools and `context_builder(..., response_type:"clarify")` need no API key. Provider-backed builder modes and `oracle_send` require either `OPENCODE_API_KEY` defaults or the complete explicit endpoint/Primary/Secondary tuple. Do not pass `OPENCODE_API_KEY` for an explicit Surf-only Oracle.
 - Explicit provider options include `REPOPROMPT_ORACLE_API_KEY` bearer auth, `REPOPROMPT_ORACLE_REASONING_EFFORT`, and `REPOPROMPT_ORACLE_TIMEOUT_SECONDS=1...3600`.
+
+### Linux desktop
+
+- Ubuntu prerequisites are `clang`, `git`, `libgtk-4-dev`, and `pkg-config`; Git evaluates hierarchical `.gitignore` rules. Xvfb verification also needs `xvfb`, `xauth`, and `x11-utils`.
+- Export `SCUI_DEFAULT_BACKEND=GtkBackend` before Linux desktop build, test, or run commands.
+- Build and test the isolated package with:
+  - `swift build --package-path LinuxDesktop --product repoprompt-linux-desktop --disable-automatic-resolution`
+  - `swift test --package-path LinuxDesktop --disable-automatic-resolution`
+- Run it with `SCUI_DEFAULT_BACKEND=GtkBackend swift run --package-path LinuxDesktop repoprompt-linux-desktop --root /path/to/workspace`.
+- Run `python3 Scripts/verify_linux_desktop_graph.py` and `bash Scripts/smoke_linux_desktop.sh` on Linux. The smoke clears provider configuration, creates a temporary workspace, observes the `RepoPrompt Portable` window under Xvfb, and cleans up.
+- Keep SwiftCrossUI and all UI backends out of the root manifest, root lockfile, `Dockerfile.headless`, and existing release channel. Native packaging is deferred; do not invent a package format without an explicit distribution policy.
 
 ### Docker verification
 

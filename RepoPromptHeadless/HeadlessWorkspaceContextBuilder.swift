@@ -26,9 +26,9 @@ struct HeadlessWorkspaceContext: Equatable, Sendable {
 			case sliceOutOfBounds = "slice_out_of_bounds"
 			case budgetExceeded = "budget_exceeded"
 			case readFailed = "read_failed"
-				case orphanSlice = "orphan_slice"
-				case invalidSlice = "invalid_slice"
-				case autoCodemapUnsupported = "auto_codemap_unsupported"
+			case orphanSlice = "orphan_slice"
+			case invalidSlice = "invalid_slice"
+			case autoCodemapUnsupported = "auto_codemap_unsupported"
 		}
 
 		let path: String
@@ -54,8 +54,9 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 	static let absoluteMaximumBytes = 1_048_576
 	static let maximumSourceFileBytes = 8_388_608
 	static let maximumAggregateSourceBytes = 64 * 1_024 * 1_024
-	static let maximumSelectionEntries = 1_024
-	static let maximumTotalRanges = 4_096
+	static let maximumSelectionEntries = WorkspaceSelectionReducer.maximumSelectionEntries
+	static let maximumRangesPerFile = WorkspaceSelectionReducer.maximumRangesPerFile
+	static let maximumTotalRanges = WorkspaceSelectionReducer.maximumTotalRanges
 
 	private let resolver: HeadlessWorkspacePathResolver
 
@@ -65,28 +66,19 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 
 	func build(selection: WorkspaceSelectionSnapshot, maximumBytes: Int) -> HeadlessWorkspaceContext {
 		let limit = max(0, maximumBytes)
-		var content = ""
+		var contentBlocks: [String] = []
 		var entries: [HeadlessWorkspaceContext.Entry] = []
 		var omissions: [HeadlessWorkspaceContext.Omission] = []
 		var truncated = false
-		var omittedRootCount = 0
 		var sourceBytesRead = 0
 
-		func append(_ text: String) -> Bool {
-			guard content.utf8.count + text.utf8.count <= limit else { return false }
-			content += text
+		func appendContentBlock(_ block: String) -> Bool {
+			let candidate = CanonicalPromptPackaging.package(
+				fileContentBlocks: contentBlocks + [block]
+			)
+			guard candidate.utf8.count <= limit else { return false }
+			contentBlocks.append(block)
 			return true
-		}
-
-		_ = append("[RepoPrompt portable workspace context]\n")
-		for index in resolver.roots.indices {
-			if !append("root[\(index)]\n") {
-				omittedRootCount += 1
-				truncated = true
-			}
-		}
-		if omittedRootCount > 0 {
-			_ = append("[\(omittedRootCount) root(s) omitted by byte budget]\n")
 		}
 
 		var sliceMap: [String: [LineRange]] = [:]
@@ -97,7 +89,7 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 			do {
 				let path = try resolver.lexicalPath(rawPath)
 				let available = max(0, Self.maximumTotalRanges - acceptedRangeCount)
-				let accepted = Array(ranges.prefix(min(256, available)))
+				let accepted = Array(ranges.prefix(min(Self.maximumRangesPerFile, available)))
 				sliceMap[path, default: []].append(contentsOf: accepted)
 				acceptedRangeCount += accepted.count
 				if accepted.count != ranges.count { truncated = true }
@@ -117,9 +109,7 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 		for rawPath in selection.selectedPaths.prefix(Self.maximumSelectionEntries) {
 			do {
 				let path = try resolver.lexicalPath(rawPath)
-				if selectedSet.insert(path).inserted {
-					selectedPaths.append(path)
-				}
+				if selectedSet.insert(path).inserted { selectedPaths.append(path) }
 			} catch {
 				omissions.append(.init(path: rawPath, reason: .outsideWorkspace))
 			}
@@ -140,57 +130,28 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 				}
 
 				let hasSliceEntry = sliceIntentPaths.contains(path)
-				let ranges = (sliceMap[path] ?? []).sorted {
-					$0.start == $1.start ? $0.end < $1.end : $0.start < $1.start
-				}
+				let ranges = sliceMap[path] ?? []
 				if hasSliceEntry, ranges.isEmpty {
 					omissions.append(.init(path: location.displayPath, reason: .invalidSlice))
 					continue
 				}
-				if ranges.isEmpty {
-					let prefix = "\n===== BEGIN FILE root[\(location.rootIndex)]:\(location.relativePath) [full] =====\n"
-					let suffix = "\n===== END FILE root[\(location.rootIndex)]:\(location.relativePath) =====\n"
-					let overhead = prefix.utf8.count + suffix.utf8.count
-					let remaining = max(0, limit - content.utf8.count - overhead)
-					let data: Data
-					do {
-						data = try resolver.read(at: location.realPath, maximumBytes: min(remaining, Self.maximumSourceFileBytes)).data
-					} catch HeadlessSecureFileError.tooLarge(let byteCount) {
-						let reason: HeadlessWorkspaceContext.Omission.Reason = byteCount > Self.maximumSourceFileBytes ? .sourceTooLarge : .budgetExceeded
-						omissions.append(.init(path: location.displayPath, reason: reason))
-						truncated = truncated || reason == .budgetExceeded
-						continue
-					}
-					guard let source = String(data: data, encoding: .utf8) else {
-						omissions.append(.init(path: location.displayPath, reason: .invalidUTF8))
-						continue
-					}
-					sourceBytesRead += data.count
-					let rendered = prefix + source + suffix
-					guard append(rendered) else {
-						omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
-						truncated = true
-						continue
-					}
-					entries.append(.init(path: location.displayPath, kind: .selectedFull, startLine: nil, endLine: nil, byteCount: source.utf8.count))
+
+				let remainingAggregateBytes = max(0, Self.maximumAggregateSourceBytes - sourceBytesRead)
+				guard remainingAggregateBytes > 0 else {
+					omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
+					truncated = true
 					continue
 				}
-
+				let readLimit = ranges.isEmpty
+					? min(min(Self.maximumSourceFileBytes, remainingAggregateBytes), limit)
+					: min(Self.maximumSourceFileBytes, remainingAggregateBytes)
 				let data: Data
-				let remainingSourceBytes = max(0, Self.maximumAggregateSourceBytes - sourceBytesRead)
 				do {
-					guard remainingSourceBytes > 0 else {
-						omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
-						truncated = true
-						continue
-					}
-					data = try resolver.read(
-						at: location.realPath,
-						maximumBytes: min(Self.maximumSourceFileBytes, remainingSourceBytes)
-					).data
-				} catch HeadlessSecureFileError.tooLarge {
-					let reason: HeadlessWorkspaceContext.Omission.Reason =
-						remainingSourceBytes < Self.maximumSourceFileBytes ? .budgetExceeded : .sourceTooLarge
+					data = try resolver.read(at: location.realPath, maximumBytes: readLimit).data
+				} catch HeadlessSecureFileError.tooLarge(let byteCount) {
+					let reason: HeadlessWorkspaceContext.Omission.Reason = byteCount > Self.maximumSourceFileBytes
+						? .sourceTooLarge
+						: .budgetExceeded
 					omissions.append(.init(path: location.displayPath, reason: reason))
 					truncated = truncated || reason == .budgetExceeded
 					continue
@@ -200,24 +161,68 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 					omissions.append(.init(path: location.displayPath, reason: .invalidUTF8))
 					continue
 				}
-				let lines = source.isEmpty ? [] : source.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-				for range in ranges {
-					guard range.start > 0, range.end >= range.start, range.start <= lines.count else {
-						omissions.append(.init(path: "\(location.displayPath):\(range.start)-\(range.end)", reason: .sliceOutOfBounds))
-						continue
-					}
-					let end = min(range.end, lines.count)
-					let slice = Array(lines[(range.start - 1) ..< end]).joined(separator: "\n")
-					let prefix = "\n===== BEGIN FILE root[\(location.rootIndex)]:\(location.relativePath) [lines \(range.start)-\(end)] =====\n"
-					let suffix = "\n===== END FILE root[\(location.rootIndex)]:\(location.relativePath) =====\n"
-					let rendered = prefix + slice + suffix
-					guard append(rendered) else {
-						omissions.append(.init(path: "\(location.displayPath):\(range.start)-\(end)", reason: .budgetExceeded))
+
+				if ranges.isEmpty {
+					let block = CanonicalPromptPackaging.fullFileBlock(
+						displayPath: location.displayPath,
+						fileName: location.relativePath,
+						content: source
+					)
+					guard appendContentBlock(block) else {
+						omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
 						truncated = true
 						continue
 					}
-					entries.append(.init(path: location.displayPath, kind: .selectedSlice, startLine: range.start, endLine: end, byteCount: slice.utf8.count))
+					entries.append(.init(
+						path: location.displayPath,
+						kind: .selectedFull,
+						startLine: nil,
+						endLine: nil,
+						byteCount: source.utf8.count
+					))
+					continue
 				}
+
+				let invalidRanges = ranges.filter { $0.start < 1 || $0.end < $0.start }
+				for range in invalidRanges {
+					omissions.append(.init(
+						path: "\(location.displayPath):\(range.start)-\(range.end)",
+						reason: .invalidSlice
+					))
+				}
+				let validRanges = ranges.filter { $0.start >= 1 && $0.end >= $0.start }
+				let assembly = WorkspaceSliceAssemblyBuilder.build(from: source, ranges: validRanges)
+				for range in validRanges where range.start > assembly.totalLines {
+					omissions.append(.init(
+						path: "\(location.displayPath):\(range.start)-\(range.end)",
+						reason: .sliceOutOfBounds
+					))
+				}
+				guard !assembly.isFullFile else {
+					if invalidRanges.isEmpty, !validRanges.contains(where: { $0.start > assembly.totalLines }) {
+						omissions.append(.init(path: location.displayPath, reason: .invalidSlice))
+					}
+					continue
+				}
+				let block = CanonicalPromptPackaging.sliceFileBlock(
+					displayPath: location.displayPath,
+					fileName: location.relativePath,
+					segments: assembly.segments
+				)
+				guard appendContentBlock(block) else {
+					omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
+					truncated = true
+					continue
+				}
+				entries.append(contentsOf: assembly.segments.map { segment in
+					.init(
+						path: location.displayPath,
+						kind: .selectedSlice,
+						startLine: segment.range.start,
+						endLine: segment.range.end,
+						byteCount: segment.text.utf8.count
+					)
+				})
 			} catch let error as HeadlessWorkspacePathError {
 				omissions.append(.init(path: resolver.displayPath(path), reason: error.omissionReason))
 			} catch {
@@ -230,17 +235,14 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 		}
 		omissions.append(contentsOf: invalidSliceKeys)
 
-		var seenAuto = Set<String>()
-		for rawPath in selection.autoCodemapPaths {
+		var seenManualCodemaps = Set<String>()
+		for rawPath in selection.manualCodemapPaths {
 			let path = (try? resolver.lexicalPath(rawPath)) ?? rawPath
-			guard !selectedSet.contains(path), seenAuto.insert(path).inserted else { continue }
+			guard !selectedSet.contains(path), seenManualCodemaps.insert(path).inserted else { continue }
 			omissions.append(.init(path: resolver.displayPath(path), reason: .autoCodemapUnsupported))
 		}
 
-		if entries.isEmpty {
-			_ = append("\nNo readable files are selected.\n")
-		}
-
+		let content = CanonicalPromptPackaging.package(fileContentBlocks: contentBlocks)
 		return HeadlessWorkspaceContext(
 			roots: resolver.roots.map(\.lexicalPath),
 			selection: selection,
@@ -249,7 +251,7 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 			content: content,
 			maximumByteCount: limit,
 			truncated: truncated,
-			omittedRootCount: omittedRootCount
+			omittedRootCount: 0
 		)
 	}
 }

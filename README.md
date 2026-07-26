@@ -1,6 +1,6 @@
 # RepoPrompt Portable
 
-Portable, UI-free RepoPrompt context building and dual-Oracle MCP for Linux and containers.
+Portable RepoPrompt context building and dual-Oracle MCP for Linux and containers, plus an isolated Linux GTK desktop.
 
 The image contains both `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL command runner. It renders only the caller's explicit file/slice selection and sends mandatory concurrent Primary and Secondary requests for provider-backed work. It has no Apple UI dependency.
 
@@ -26,6 +26,41 @@ Portable software `0.3.0` advertises tool-schema version `1.1.0` on every tool i
 - Pro Edit returns two independent opaque Pro Edit v1 instruction artifacts under `oracle_results.primary.response` and `.secondary.response`; top-level `response` projects Primary only. Portable does not parse, validate, delegate, apply, write, persist, or certify either artifact.
 
 See [the architecture and configuration guide](docs/architecture/portable-oracle-mcp.md) for the complete schema, provider metadata/error fields, and security boundary.
+
+## Linux desktop
+
+`LinuxDesktop/` is an isolated Swift package that builds the native `repoprompt-linux-desktop` GTK 4 application. It reuses the typed `RepoPromptHeadless` service in-process without adding SwiftCrossUI or a desktop backend to the root package graph.
+
+Ubuntu build and smoke prerequisites:
+
+```bash
+sudo apt-get update
+sudo apt-get install --yes --no-install-recommends \
+  clang git libgtk-4-dev pkg-config xvfb xauth x11-utils
+```
+
+Build, test, run, and verify:
+
+```bash
+export SCUI_DEFAULT_BACKEND=GtkBackend
+swift build --package-path LinuxDesktop --product repoprompt-linux-desktop --disable-automatic-resolution
+swift test --package-path LinuxDesktop --disable-automatic-resolution
+swift run --package-path LinuxDesktop repoprompt-linux-desktop --root "$PWD"
+python3 Scripts/verify_linux_desktop_graph.py
+bash Scripts/smoke_linux_desktop.sh
+```
+
+For immediate macOS QA, SwiftCrossUI selects its native AppKit backend automatically. The explicit flag prevents accidental reliance on this QA-only path:
+
+```bash
+swift run --package-path LinuxDesktop repoprompt-linux-desktop --macos --root "$PWD"
+```
+
+Resolve dependencies only from the nested package when intentionally updating its pins: `swift package --package-path LinuxDesktop resolve`. Commit `LinuxDesktop/Package.resolved`; do not let this operation rewrite the root `Package.resolved`.
+
+The desktop requires the GTK 4 runtime and a Wayland or X11 display. It is not included in `Dockerfile.headless`, the existing container, or the tagged release channel. Native packaging is deferred until a distribution and artifact policy is defined; the verified deliverable is the executable product named above.
+
+See [Linux desktop architecture](docs/architecture/linux-desktop.md) for the boundary and explicit non-goals.
 
 ## Run an immutable image
 

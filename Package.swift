@@ -6,11 +6,12 @@ let package = Package(
 	platforms: [.macOS(.v13)],
 	products: [
 		.library(name: "RepoPromptCore", targets: ["RepoPromptCore"]),
+		.library(name: "RepoPromptHeadless", targets: ["RepoPromptHeadless"]),
 		.executable(name: "repoprompt-headless", targets: ["RepoPromptHeadlessServer"]),
 		.executable(name: "repoprompt-portable-cli", targets: ["RepoPromptPortableCLI"])
 	],
 	dependencies: [
-		.package(url: "https://github.com/apple/swift-log.git", exact: "1.6.3"),
+		.package(url: "https://github.com/apple/swift-log.git", "1.6.3"..<"1.7.0"),
 		.package(
 			url: "https://github.com/provencher/swift-sdk.git",
 			revision: "cb6a62f7c266ed535792b3e9e6e05dc3f0dac8e4"

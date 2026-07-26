@@ -4,18 +4,17 @@ import RepoPromptCore
 
 public actor HeadlessToolCatalog {
 	private static let maximumReadFileBytes = 8 * 1_024 * 1_024
-	private static let maximumSelectionEntries = 1_024
-	private static let maximumRangesPerFile = 256
-	private static let maximumTotalRanges = 4_096
-	private static let maximumPathBytes = 4_096
+	private static let maximumSelectionEntries = HeadlessWorkspaceContextBuilder.maximumSelectionEntries
+	private static let maximumRangesPerFile = HeadlessWorkspaceContextBuilder.maximumRangesPerFile
+	private static let maximumTotalRanges = HeadlessWorkspaceContextBuilder.maximumTotalRanges
 
 	private let roots: [String]
 	private let session: RepoPromptSession
 	private let router: WorkspaceSessionRouter
 	private let allowWrites: Bool
 	private let fileManager: FileManager
-	private let contextBuilder: HeadlessWorkspaceContextBuilder
-	private let oracleWorkflow: HeadlessOracleWorkflow?
+	private let pathIndex: HeadlessWorkspacePathIndex
+	private let workspaceService: PortableWorkspaceService
 	private let encoder: JSONEncoder
 
 	private let deniedTools: Set<String> = [
@@ -48,21 +47,25 @@ public actor HeadlessToolCatalog {
 		fileManager: FileManager = .default,
 		oracleConfiguration: HeadlessOracleConfiguration? = nil
 	) {
-		let standardizedRoots = roots.map {
-			URL(fileURLWithPath: $0, isDirectory: true).resolvingSymlinksInPath().standardizedFileURL.path
-		}
-		self.roots = standardizedRoots
-		self.session = session
-		self.router = router
-		self.allowWrites = allowWrites
-		self.fileManager = fileManager
-		self.contextBuilder = HeadlessWorkspaceContextBuilder(roots: standardizedRoots)
-		self.oracleWorkflow = oracleConfiguration.map { configuration in
+		let pathIndex = HeadlessWorkspacePathIndex(roots: roots, fileManager: fileManager)
+		let oracleWorkflow = oracleConfiguration.map { configuration in
 			HeadlessOracleWorkflow(
 				configuration: configuration,
 				provider: OpenAICompatibleOracleProvider(configuration: configuration)
 			)
 		}
+		self.roots = pathIndex.roots
+		self.session = session
+		self.router = router
+		self.allowWrites = allowWrites
+		self.fileManager = fileManager
+		self.pathIndex = pathIndex
+		self.workspaceService = PortableWorkspaceService(
+			roots: pathIndex.roots,
+			session: session,
+			fileManager: fileManager,
+			oracleWorkflow: oracleWorkflow
+		)
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
 		self.encoder = encoder
@@ -76,16 +79,19 @@ public actor HeadlessToolCatalog {
 		fileManager: FileManager = .default,
 		oracleWorkflow: HeadlessOracleWorkflow?
 	) {
-		let standardizedRoots = roots.map {
-			URL(fileURLWithPath: $0, isDirectory: true).resolvingSymlinksInPath().standardizedFileURL.path
-		}
-		self.roots = standardizedRoots
+		let pathIndex = HeadlessWorkspacePathIndex(roots: roots, fileManager: fileManager)
+		self.roots = pathIndex.roots
 		self.session = session
 		self.router = router
 		self.allowWrites = allowWrites
 		self.fileManager = fileManager
-		self.contextBuilder = HeadlessWorkspaceContextBuilder(roots: standardizedRoots)
-		self.oracleWorkflow = oracleWorkflow
+		self.pathIndex = pathIndex
+		self.workspaceService = PortableWorkspaceService(
+			roots: pathIndex.roots,
+			session: session,
+			fileManager: fileManager,
+			oracleWorkflow: oracleWorkflow
+		)
 		let encoder = JSONEncoder()
 		encoder.outputFormatting = [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes]
 		self.encoder = encoder
@@ -148,7 +154,8 @@ public actor HeadlessToolCatalog {
 											"additionalProperties": .bool(false),
 											"properties": .object([
 												"start_line": .object(["type": .string("integer"), "minimum": .int(1)]),
-												"end_line": .object(["type": .string("integer"), "minimum": .int(1)])
+												"end_line": .object(["type": .string("integer"), "minimum": .int(1)]),
+												"description": Self.stringSchema(description: "Optional slice description, at most 1024 UTF-8 bytes and no NUL.")
 											])
 										])
 									])
@@ -156,7 +163,8 @@ public actor HeadlessToolCatalog {
 							])
 					]),
 					"view": Self.stringSchema(description: "summary, files, or content."),
-					"mode": Self.stringSchema(description: "full, slices, or codemap_only. codemap_only source is never expanded in headless mode.")
+					"mode": Self.stringSchema(description: "full, slices, or codemap_only. codemap_only source is never expanded in headless mode."),
+					"codemap_auto_enabled": .object(["type": .string("boolean"), "description": .string("Optional automatic-codemap state applied atomically with the mutation.")])
 				]
 			),
 			Self.tool(
@@ -247,6 +255,14 @@ public actor HeadlessToolCatalog {
 			}
 		} catch is CancellationError {
 			return self.error("Oracle request was cancelled.", code: "cancelled")
+		} catch let error as PortableWorkspaceServiceError {
+			let details: JSONValue?
+			if case .incompleteContext(let context) = error {
+				details = incompleteContextDetails(context)
+			} else {
+				details = nil
+			}
+			return self.error(error.message, code: error.code, details: details)
 		} catch let error as HeadlessToolError {
 			return self.error(error.message, code: error.code, details: error.details)
 		} catch {
@@ -297,20 +313,20 @@ public actor HeadlessToolCatalog {
 		let maxDepth = args["max_depth"]?.intValue
 		if mode == "selected" {
 			let selection = await session.selectionStore.snapshot(tabID: nil)
-			let lines = selection.selectedPaths.sorted().map { path in "- \(displayPath(path))" }
+			let lines = selection.selectedPaths.sorted().map { path in "- \(pathIndex.displayPath(path))" }
 			return try jsonResult(["tree": .string(lines.isEmpty ? "(empty selection)" : lines.joined(separator: "\n"))])
 		}
 
 		let startPaths: [String]
 		if let rawPath = args["path"]?.stringValue, !rawPath.isEmpty {
-			startPaths = [try resolvePath(rawPath, mustExist: true)]
+			startPaths = [try pathIndex.resolvePath(rawPath, mustExist: true)]
 		} else {
 			startPaths = roots
 		}
 
 		var lines: [String] = []
 		for path in startPaths {
-			lines.append(displayPath(path))
+			lines.append(pathIndex.displayPath(path))
 			try appendTreeLines(path: path, prefix: "", lines: &lines, maxDepth: maxDepth, currentDepth: 0, foldersOnly: mode == "folders")
 		}
 		return try jsonResult(["tree": .string(lines.joined(separator: "\n")), "roots": .array(roots.map { .string($0) })])
@@ -320,7 +336,7 @@ public actor HeadlessToolCatalog {
 		guard let rawPath = args["path"]?.stringValue, !rawPath.isEmpty else {
 			throw HeadlessToolError("read_file requires string argument `path`.", code: "invalid_params")
 		}
-		let path = try resolvePath(rawPath, mustExist: true)
+		let path = try pathIndex.resolvePath(rawPath, mustExist: true)
 		let secureFile: HeadlessSecureFile
 		do {
 			secureFile = try HeadlessSecureFileReader.read(
@@ -371,79 +387,75 @@ public actor HeadlessToolCatalog {
 			"total_lines": .int(totalLines),
 			"first_line": .int(first),
 			"last_line": .int(last),
-			"display_path": .string(displayPath(path))
+			"display_path": .string(pathIndex.displayPath(path))
 		])
 	}
 
 	private func manageSelection(_ args: [String: Value]) async throws -> CallTool.Result {
 		let op = args["op"]?.stringValue ?? "get"
-		let mode = args["mode"]?.stringValue ?? "full"
-		guard ["full", "slices", "codemap_only"].contains(mode) else {
-			throw HeadlessToolError("Unsupported manage_selection mode: \(mode)", code: "invalid_params")
+		let rawMode = args["mode"]?.stringValue ?? "full"
+		let mode: HeadlessSelectionMode
+		switch rawMode {
+		case "full": mode = .full
+		case "slices": mode = .slices
+		case "codemap_only": mode = .codemapOnly
+		default:
+			throw HeadlessToolError("Unsupported manage_selection mode: \(rawMode)", code: "invalid_params")
 		}
-		let store = await session.selectionStore
-		var selection = await store.snapshot(tabID: nil)
 
+		let codemapAutoEnabledOverride: Bool?
+		if let value = args["codemap_auto_enabled"] {
+			guard let enabled = value.boolValue else {
+				throw HeadlessToolError("manage_selection `codemap_auto_enabled` must be a boolean.", code: "invalid_params")
+			}
+			codemapAutoEnabledOverride = enabled
+		} else {
+			codemapAutoEnabledOverride = nil
+		}
+
+		let selection: WorkspaceSelectionSnapshot
 		switch op {
 		case "get":
-			break
+			guard codemapAutoEnabledOverride == nil else {
+				throw HeadlessToolError("manage_selection op `get` does not accept `codemap_auto_enabled`.", code: "invalid_params")
+			}
+			selection = try await workspaceService.applySelection(operation: .get, mode: mode)
 		case "clear":
-			selection = WorkspaceSelectionSnapshot()
-			await store.persist(selection, for: nil, source: .headless)
+			selection = try await workspaceService.applySelection(
+				operation: .clear,
+				mode: mode,
+				codemapAutoEnabledOverride: codemapAutoEnabledOverride
+			)
 		case "set", "add", "remove":
 			let rawPaths = try stringArray(args["paths"], name: "paths")
-			if mode == "slices", !rawPaths.isEmpty {
+			if mode == .slices, !rawPaths.isEmpty {
 				throw HeadlessToolError("manage_selection mode `slices` does not accept `paths`.", code: "invalid_params")
 			}
 			let resolvedPaths = try rawPaths.map { try validatedSelectionPath($0) }
-			let resolvedSlices = try selectionSlices(args["slices"])
-			if mode == "slices", op != "remove", resolvedSlices.isEmpty {
+			let resolvedSlices = try selectionSlices(args["slices"]).map {
+				HeadlessSelectionSlice(path: $0.path, ranges: $0.ranges)
+			}
+			if mode == .slices, op != "remove", resolvedSlices.isEmpty {
 				throw HeadlessToolError("manage_selection mode `slices` requires non-empty `slices`.", code: "invalid_params")
 			}
-			if mode != "slices", !resolvedSlices.isEmpty {
+			if mode != .slices, !resolvedSlices.isEmpty {
 				throw HeadlessToolError("manage_selection `slices` requires mode `slices`.", code: "invalid_params")
 			}
 			guard resolvedPaths.count + resolvedSlices.count <= Self.maximumSelectionEntries else {
 				throw HeadlessToolError("manage_selection accepts at most 1024 paths or slice files.", code: "invalid_params")
 			}
-
-			if op == "set" {
-				switch mode {
-				case "full":
-					selection = WorkspaceSelectionSnapshot(selectedPaths: resolvedPaths)
-				case "codemap_only":
-					selection = WorkspaceSelectionSnapshot(autoCodemapPaths: resolvedPaths, codemapAutoEnabled: false)
-				default:
-					selection = WorkspaceSelectionSnapshot(
-						selectedPaths: resolvedSlices.map(\.path),
-						slices: Dictionary(uniqueKeysWithValues: resolvedSlices.map { ($0.path, $0.ranges) })
-					)
-				}
-			} else if op == "add" {
-				switch mode {
-				case "full":
-					appendUnique(resolvedPaths, to: &selection.selectedPaths)
-					selection.autoCodemapPaths.removeAll { resolvedPaths.contains($0) }
-					for path in resolvedPaths { selection.slices.removeValue(forKey: path) }
-				case "codemap_only":
-					appendUnique(resolvedPaths, to: &selection.autoCodemapPaths)
-					selection.selectedPaths.removeAll { resolvedPaths.contains($0) }
-					for path in resolvedPaths { selection.slices.removeValue(forKey: path) }
-					selection.codemapAutoEnabled = false
-				default:
-					let paths = resolvedSlices.map(\.path)
-					appendUnique(paths, to: &selection.selectedPaths)
-					selection.autoCodemapPaths.removeAll { paths.contains($0) }
-					for slice in resolvedSlices { selection.slices[slice.path] = slice.ranges }
-				}
-			} else {
-				let remove = Set(resolvedPaths + resolvedSlices.map(\.path))
-				selection.selectedPaths.removeAll { remove.contains($0) }
-				selection.autoCodemapPaths.removeAll { remove.contains($0) }
-				for path in remove { selection.slices.removeValue(forKey: path) }
+			let operation: HeadlessSelectionOperation = switch op {
+			case "set": .set
+			case "add": .add
+			default: .remove
 			}
-			try validateSelectionLimits(selection)
-			await store.persist(selection, for: nil, source: .headless)
+			selection = try await workspaceService.applySelection(
+				operation: operation,
+				mode: mode,
+				paths: resolvedPaths,
+				slices: resolvedSlices,
+				codemapAutoEnabledOverride: codemapAutoEnabledOverride
+			)
 		default:
 			throw HeadlessToolError("Unsupported manage_selection op: \(op)", code: "invalid_params")
 		}
@@ -470,8 +482,7 @@ public actor HeadlessToolCatalog {
 
 		switch responseType {
 		case .clarify:
-			let selection = await session.selectionStore.snapshot(tabID: nil)
-			let context = contextBuilder.build(selection: selection, maximumBytes: maximumBytes)
+			let context = await workspaceService.renderContext(maximumBytes: maximumBytes)
 			return try jsonResult([
 				"ok": .bool(true),
 				"status": .string("context_built"),
@@ -480,7 +491,7 @@ public actor HeadlessToolCatalog {
 				"workspace_context": contextJSON(context)
 			])
 		case .generated(let mode):
-			let (context, result) = try await executeOracle(
+			let (context, result) = try await workspaceService.executeOracle(
 				mode: mode,
 				request: instructions,
 				maximumBytes: maximumBytes,
@@ -530,7 +541,7 @@ public actor HeadlessToolCatalog {
 			maximumBytes: HeadlessOracleWorkflow.maximumClarifyHandoffBytes
 		)
 		let maximumBytes = try contextMaximumBytes(args["max_context_bytes"])
-		let (context, result) = try await executeOracle(
+		let (context, result) = try await workspaceService.executeOracle(
 			mode: mode,
 			request: message,
 			maximumBytes: maximumBytes,
@@ -552,39 +563,6 @@ public actor HeadlessToolCatalog {
 		}
 	}
 
-	private func executeOracle(
-		mode: HeadlessOracleMode,
-		request: String,
-		maximumBytes: Int,
-		reviewDiff: String? = nil,
-		clarifyHandoff: String? = nil
-	) async throws -> (HeadlessWorkspaceContext, HeadlessOraclePairResult) {
-		guard let oracleWorkflow else {
-			throw HeadlessToolError("Oracle is not configured. Set the required REPOPROMPT_ORACLE_* environment variables.", code: "oracle_not_configured")
-		}
-		let selection = await session.selectionStore.snapshot(tabID: nil)
-		let context = contextBuilder.build(selection: selection, maximumBytes: maximumBytes)
-		guard context.isCompleteForProvider else {
-			throw HeadlessToolError(
-				"Selected workspace context is incomplete; inspect context_builder clarify omission metadata before retrying.",
-				code: "incomplete_workspace_context",
-				details: incompleteContextDetails(context)
-			)
-		}
-		do {
-			let result = try await oracleWorkflow.execute(
-				mode: mode,
-				request: request,
-				context: context,
-				reviewDiff: reviewDiff,
-				clarifyHandoff: clarifyHandoff
-			)
-			return (context, result)
-		} catch let error as HeadlessOracleWorkflowError {
-			throw HeadlessToolError(error.message, code: error.code)
-		}
-	}
-
 	private func fileSearch(_ args: [String: Value]) async throws -> CallTool.Result {
 		guard let pattern = args["pattern"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !pattern.isEmpty else {
 			throw HeadlessToolError("file_search requires non-empty string argument `pattern`.", code: "invalid_params")
@@ -598,9 +576,9 @@ public actor HeadlessToolCatalog {
 		var matches: [JSONValue] = []
 		var total = 0
 
-		for file in try allFiles() {
+		for file in pathIndex.allFiles() {
 			guard matches.count < maxResults || countOnly else { break }
-			let relative = displayPath(file)
+			let relative = pathIndex.displayPath(file)
 			if mode == "path" || mode == "both" || mode == "auto" {
 				if matcher.matches(relative) {
 					total += 1
@@ -643,7 +621,7 @@ public actor HeadlessToolCatalog {
 		var isDirectory = ObjCBool(false)
 		guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else { return }
 		let children = try fileManager.contentsOfDirectory(atPath: path)
-			.filter { !Self.shouldSkipName($0) }
+			.filter { !HeadlessWorkspacePathIndex.shouldSkipName($0) }
 			.sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
 		let visibleChildren = foldersOnly
 			? children.filter { child in
@@ -668,73 +646,6 @@ public actor HeadlessToolCatalog {
 		}
 	}
 
-	private func allFiles() throws -> [String] {
-		var files: [String] = []
-		for root in roots {
-			guard let enumerator = fileManager.enumerator(atPath: root) else { continue }
-			for case let relative as String in enumerator {
-				let name = (relative as NSString).lastPathComponent
-				if Self.shouldSkipName(name) {
-					enumerator.skipDescendants()
-					continue
-				}
-				let path = (root as NSString).appendingPathComponent(relative)
-				var isDirectory = ObjCBool(false)
-				guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else { continue }
-				files.append(path)
-			}
-		}
-		return files
-	}
-
-	private func resolvePath(_ raw: String, mustExist: Bool) throws -> String {
-		let expanded = (raw as NSString).expandingTildeInPath
-		let absolute: String
-		if let qualified = parseRootQualifiedPath(expanded) {
-			guard roots.indices.contains(qualified.index) else {
-				throw HeadlessToolError("Invalid workspace root index in path: \(raw)", code: "invalid_params")
-			}
-			absolute = (roots[qualified.index] as NSString).appendingPathComponent(qualified.relativePath)
-		} else {
-			absolute = expanded.hasPrefix("/") ? expanded : (roots[0] as NSString).appendingPathComponent(expanded)
-		}
-		let standardized = (absolute as NSString).standardizingPath
-		guard roots.contains(where: { root in contains(standardized, root: root) }) else {
-			throw HeadlessToolError("Path is outside the headless workspace roots: \(raw)", code: "path_outside_workspace")
-		}
-		if mustExist, !fileManager.fileExists(atPath: standardized) {
-			throw HeadlessToolError("Path does not exist: \(raw)", code: "not_found")
-		}
-		return standardized
-	}
-
-	private func displayPath(_ path: String) -> String {
-		for (index, root) in roots.enumerated().sorted(by: { $0.element.count > $1.element.count }) {
-			let prefixLabel = roots.count > 1 ? "root[\(index)]:" : ""
-			if path == root { return roots.count > 1 ? "root[\(index)]" : root }
-			let prefix = root.hasSuffix("/") ? root : root + "/"
-			if path.hasPrefix(prefix) {
-				return prefixLabel + String(path.dropFirst(prefix.count))
-			}
-		}
-		return path
-	}
-
-	private func contains(_ path: String, root: String) -> Bool {
-		path == root || path.hasPrefix(root.hasSuffix("/") ? root : root + "/")
-	}
-
-	private func parseRootQualifiedPath(_ path: String) -> (index: Int, relativePath: String)? {
-		guard path.hasPrefix("root["), let close = path.firstIndex(of: "]") else { return nil }
-		let indexStart = path.index(path.startIndex, offsetBy: 5)
-		guard let index = Int(path[indexStart..<close]) else { return nil }
-		let suffix = path[path.index(after: close)...]
-		guard suffix.first == ":" else { return nil }
-		let relative = suffix.dropFirst()
-		guard !relative.hasPrefix("/") else { return nil }
-		return (index, String(relative))
-	}
-
 	private func contextJSON(_ snapshot: RepoPromptSessionSnapshot, bound: Bool) -> JSONValue {
 		.object([
 			"context_id": .string(snapshot.id.uuidString),
@@ -749,10 +660,12 @@ public actor HeadlessToolCatalog {
 		[
 			"ok": .bool(true),
 			"selection": .object([
-				"selected_paths": .array(selection.selectedPaths.map { .string(displayPath($0)) }),
+				"selected_paths": .array(selection.selectedPaths.map { .string(pathIndex.displayPath($0)) }),
 				"selected_count": .int(selection.selectedPaths.count),
-				"auto_codemap_paths": .array(selection.autoCodemapPaths.map { .string(displayPath($0)) }),
+				"auto_codemap_paths": .array(selection.autoCodemapPaths.map { .string(pathIndex.displayPath($0)) }),
+				"manual_codemap_paths": .array(selection.manualCodemapPaths.map { .string(pathIndex.displayPath($0)) }),
 				"slices": .object(displaySlices(selection.slices)),
+				"slice_details": .array(displaySliceDetails(selection.slices)),
 				"codemap_auto_enabled": .bool(selection.codemapAutoEnabled)
 			])
 		]
@@ -762,9 +675,11 @@ public actor HeadlessToolCatalog {
 		.object([
 			"roots": .array(context.roots.map { .string($0) }),
 			"selection": .object([
-				"selected_paths": .array(context.selection.selectedPaths.map { .string(displayPath($0)) }),
-				"auto_codemap_paths": .array(context.selection.autoCodemapPaths.map { .string(displayPath($0)) }),
+				"selected_paths": .array(context.selection.selectedPaths.map { .string(pathIndex.displayPath($0)) }),
+				"auto_codemap_paths": .array(context.selection.autoCodemapPaths.map { .string(pathIndex.displayPath($0)) }),
+				"manual_codemap_paths": .array(context.selection.manualCodemapPaths.map { .string(pathIndex.displayPath($0)) }),
 				"slices": .object(displaySlices(context.selection.slices)),
+				"slice_details": .array(displaySliceDetails(context.selection.slices)),
 				"codemap_auto_enabled": .bool(context.selection.codemapAutoEnabled)
 			]),
 			"entries": .array(context.entries.map { entry in
@@ -891,10 +806,10 @@ public actor HeadlessToolCatalog {
 		}
 	}
 
-	private func incompleteContextDetails(_ context: HeadlessWorkspaceContext) -> JSONValue {
+	private func incompleteContextDetails(_ context: PortableContextPreview) -> JSONValue {
 		let visible = context.omissions.prefix(64).map { omission in
 			JSONValue.object([
-				"path": .string(omission.path),
+				"path": .string(omission.displayPath),
 				"reason": .string(omission.reason.rawValue)
 			])
 		}
@@ -1019,7 +934,7 @@ public actor HeadlessToolCatalog {
 				else {
 					throw HeadlessToolError("Each slice range requires positive integer `start_line`.", code: "invalid_params")
 				}
-				let allowedKeys: Set<String> = ["start_line", "end_line"]
+				let allowedKeys: Set<String> = ["start_line", "end_line", "description"]
 				guard Set(range.keys).isSubset(of: allowedKeys) else {
 					throw HeadlessToolError("Slice ranges contain unsupported fields.", code: "invalid_params")
 				}
@@ -1027,9 +942,17 @@ public actor HeadlessToolCatalog {
 				guard end >= start else {
 					throw HeadlessToolError("Slice `end_line` must be greater than or equal to `start_line`.", code: "invalid_params")
 				}
+				let description = range["description"]?.stringValue
+				if range["description"] != nil, description == nil {
+					throw HeadlessToolError("Slice `description` must be a string.", code: "invalid_params")
+				}
+				if let description, description.contains("\0") || description.utf8.count > 1_024 {
+					throw HeadlessToolError("Slice `description` must not contain NUL and must not exceed 1024 UTF-8 bytes.", code: "invalid_params")
+				}
 				rangesByPath[path, default: []].append(LineRange(
 					start: start,
-					end: end
+					end: end,
+					description: description
 				))
 			}
 		}
@@ -1037,43 +960,32 @@ public actor HeadlessToolCatalog {
 	}
 
 	private func validatedSelectionPath(_ rawPath: String) throws -> String {
-		guard !rawPath.isEmpty, rawPath.utf8.count <= Self.maximumPathBytes else {
-			throw HeadlessToolError("Selection paths must contain 1...4096 UTF-8 bytes.", code: "invalid_params")
-		}
-		return try resolvePath(rawPath, mustExist: false)
-	}
-
-	private func appendUnique(_ paths: [String], to target: inout [String]) {
-		var seen = Set(target)
-		for path in paths where seen.insert(path).inserted {
-			target.append(path)
-		}
-	}
-
-	private func validateSelectionLimits(_ selection: WorkspaceSelectionSnapshot) throws {
-		let paths = Set(selection.selectedPaths + selection.autoCodemapPaths + Array(selection.slices.keys))
-		guard paths.count <= Self.maximumSelectionEntries else {
-			throw HeadlessToolError("Selection accepts at most 1024 files.", code: "invalid_params")
-		}
-		guard selection.slices.values.allSatisfy({ !$0.isEmpty && $0.count <= Self.maximumRangesPerFile }) else {
-			throw HeadlessToolError("Each selected slice requires 1...256 ranges.", code: "invalid_params")
-		}
-		guard selection.slices.values.reduce(0, { $0 + $1.count }) <= Self.maximumTotalRanges else {
-			throw HeadlessToolError("Selection accepts at most 4096 total slice ranges.", code: "invalid_params")
-		}
+		try pathIndex.validatedSelectionPath(rawPath)
 	}
 
 	private func displaySlices(_ slices: [String: [LineRange]]) -> [String: JSONValue] {
 		Dictionary(uniqueKeysWithValues: slices.map { path, ranges in
-			(displayPath(path), .array(ranges.map { .string("\($0.start)-\($0.end)") }))
+			(pathIndex.displayPath(path), .array(ranges.map { .string("\($0.start)-\($0.end)") }))
 		})
 	}
 
-	private static var writeToolNames: Set<String> { ["file_actions", "apply_edits", "apply_patch"] }
-
-	private static func shouldSkipName(_ name: String) -> Bool {
-		name.hasPrefix(".") || [".git", ".build", "node_modules"].contains(name)
+	private func displaySliceDetails(_ slices: [String: [LineRange]]) -> [JSONValue] {
+		slices.keys.sorted().map { path in
+			.object([
+				"path": .string(pathIndex.displayPath(path)),
+				"ranges": .array((slices[path] ?? []).map { range in
+					var value: [String: JSONValue] = [
+						"start_line": .int(range.start),
+						"end_line": .int(range.end)
+					]
+					if let description = range.description { value["description"] = .string(description) }
+					return .object(value)
+				})
+			])
+		}
 	}
+
+	private static var writeToolNames: Set<String> { ["file_actions", "apply_edits", "apply_patch"] }
 
 	private static func stringSchema(description: String) -> Value {
 		.object(["type": .string("string"), "description": .string(description)])

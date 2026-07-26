@@ -22,15 +22,73 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 
 		XCTAssertEqual(context.entries.map(\.kind), [.selectedSlice, .selectedSlice, .selectedFull])
 		XCTAssertEqual(context.entries.compactMap(\.startLine), [1, 3])
-		let firstSlice = try XCTUnwrap(context.content.range(of: "second.txt [lines 1-1]"))
-		let secondSlice = try XCTUnwrap(context.content.range(of: "second.txt [lines 3-4]"))
-		let fullFile = try XCTUnwrap(context.content.range(of: "first.txt [full]"))
+		let firstSlice = try XCTUnwrap(context.content.range(of: "(lines 1)"))
+		let secondSlice = try XCTUnwrap(context.content.range(of: "(lines 3-4)"))
+		let fullFile = try XCTUnwrap(context.content.range(of: "File: first.txt"))
 		XCTAssertLessThan(firstSlice.lowerBound, secondSlice.lowerBound)
 		XCTAssertLessThan(secondSlice.lowerBound, fullFile.lowerBound)
 		XCTAssertTrue(context.content.contains("one"))
 		XCTAssertTrue(context.content.contains("three\nfour"))
 		XCTAssertLessThanOrEqual(context.contentByteCount, 4_096)
 		XCTAssertTrue(context.isCompleteForProvider)
+	}
+
+	func testCanonicalFullFilePackagingIsByteExact() throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("Main.swift")
+		let source = "let value = 1\n"
+		try Data(source.utf8).write(to: file)
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(selectedPaths: [file.path]),
+			maximumBytes: 4_096
+		)
+		let expected = "<file_contents>\nFile: Main.swift\n```swift\nlet value = 1\n\n```\n</file_contents>"
+
+		XCTAssertEqual(Data(context.content.utf8), Data(expected.utf8))
+		XCTAssertFalse(context.content.contains("===== BEGIN FILE"))
+		XCTAssertTrue(context.isCompleteForProvider)
+	}
+
+	func testCanonicalSlicePackagingPreservesCRLFAndCRBytes() throws {
+		let root = try temporaryDirectory()
+		let crlf = root.appendingPathComponent("crlf.swift")
+		let cr = root.appendingPathComponent("legacy.txt")
+		try Data("one\r\ntwo\r\nthree\r\nfour".utf8).write(to: crlf)
+		try Data("alpha\rbeta\rgamma\rdelta".utf8).write(to: cr)
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(
+				selectedPaths: [crlf.path, cr.path],
+				slices: [
+					crlf.path: [
+						LineRange(start: 1, end: 2, description: "first"),
+						LineRange(start: 3, end: 3, description: "next")
+					],
+					cr.path: [LineRange(start: 2, end: 3, description: "legacy")]
+				]
+			),
+			maximumBytes: 8_192
+		)
+		let expected = "<file_contents>\n"
+			+ "File: crlf.swift\n(lines 1-3: first; next)\n```swift\none\r\ntwo\r\nthree\r\n\n```\n\n"
+			+ "File: legacy.txt\n(lines 2-3: legacy)\n```txt\nbeta\rgamma\r\n```\n"
+			+ "</file_contents>"
+
+		XCTAssertEqual(Data(context.content.utf8), Data(expected.utf8))
+		XCTAssertEqual(context.entries.compactMap(\.startLine), [1, 2])
+		XCTAssertEqual(context.entries.compactMap(\.endLine), [3, 3])
+		XCTAssertTrue(context.isCompleteForProvider)
+	}
+
+	func testCanonicalPackagerComposesMapBeforeContents() {
+		let packaged = CanonicalPromptPackaging.package(
+			fileMapBlocks: ["File: API.swift\nImports:\n  - Foundation"],
+			fileContentBlocks: ["File: Main.swift\n```swift\nmain()\n```"]
+		)
+		let expected = "<file_map>\nFile: API.swift\nImports:\n  - Foundation\n</file_map>\n\n"
+			+ "<file_contents>\nFile: Main.swift\n```swift\nmain()\n```\n</file_contents>"
+		XCTAssertEqual(Data(packaged.utf8), Data(expected.utf8))
 	}
 
 	func testBudgetSkipsOversizedEntriesAndContinuesWithoutReadingSparseFile() throws {
@@ -65,7 +123,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 			maximumBytes: 1_024
 		)
 		XCTAssertTrue(empty.entries.isEmpty)
-		XCTAssertTrue(empty.content.contains("No readable files are selected."))
+		XCTAssertEqual(empty.content, "")
 		XCTAssertLessThanOrEqual(empty.contentByteCount, 1_024)
 		XCTAssertTrue(empty.isCompleteForProvider)
 

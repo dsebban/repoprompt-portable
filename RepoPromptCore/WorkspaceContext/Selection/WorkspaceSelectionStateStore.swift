@@ -6,6 +6,12 @@ public struct WorkspaceSelectionSnapshot: Codable, Equatable, Sendable {
 	public var slices: [String: [LineRange]]
 	public var codemapAutoEnabled: Bool
 
+	/// Compatibility alias: `autoCodemapPaths` stores explicit/manual codemap intent.
+	public var manualCodemapPaths: [String] {
+		get { autoCodemapPaths }
+		set { autoCodemapPaths = newValue }
+	}
+
 	public init(
 		selectedPaths: [String] = [],
 		autoCodemapPaths: [String] = [],
@@ -51,6 +57,23 @@ public actor WorkspaceSelectionStateStore {
 
 	public func persist(_ selection: WorkspaceSelectionSnapshot, for tabID: UUID?, source: Source) {
 		selections[tabID] = selection
+		publish(selection, for: tabID, source: source)
+	}
+
+	@discardableResult
+	package func mutate(
+		for tabID: UUID?,
+		source: Source,
+		_ update: @Sendable (inout WorkspaceSelectionSnapshot) throws -> Void
+	) rethrows -> WorkspaceSelectionSnapshot {
+		var selection = selections[tabID] ?? selections[nil] ?? WorkspaceSelectionSnapshot()
+		try update(&selection)
+		selections[tabID] = selection
+		publish(selection, for: tabID, source: source)
+		return selection
+	}
+
+	private func publish(_ selection: WorkspaceSelectionSnapshot, for tabID: UUID?, source: Source) {
 		let change = Change(tabID: tabID, selection: selection, source: source)
 		for continuation in continuations.values {
 			continuation.yield(change)

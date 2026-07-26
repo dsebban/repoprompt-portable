@@ -51,6 +51,17 @@ struct HeadlessOracleWorkflow: Sendable {
 	static let maximumReviewDiffBytes = 262_144
 	static let maximumClarifyHandoffBytes = 1_048_576
 
+	static func validatedRequest(_ rawRequest: String) throws -> String {
+		let request = rawRequest.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !request.isEmpty else {
+			throw HeadlessOracleWorkflowError(code: "invalid_params", message: "Oracle request must not be empty.")
+		}
+		guard request.utf8.count <= maximumRequestBytes else {
+			throw HeadlessOracleWorkflowError(code: "invalid_params", message: "Oracle request exceeds 65536 UTF-8 bytes.")
+		}
+		return request
+	}
+
 	let configuration: HeadlessOracleConfiguration
 	let provider: any HeadlessOracleProvider
 
@@ -61,13 +72,7 @@ struct HeadlessOracleWorkflow: Sendable {
 		reviewDiff: String? = nil,
 		clarifyHandoff: String? = nil
 	) async throws -> HeadlessOraclePairResult {
-		let request = rawRequest.trimmingCharacters(in: .whitespacesAndNewlines)
-		guard !request.isEmpty else {
-			throw HeadlessOracleWorkflowError(code: "invalid_params", message: "Oracle request must not be empty.")
-		}
-		guard request.utf8.count <= Self.maximumRequestBytes else {
-			throw HeadlessOracleWorkflowError(code: "invalid_params", message: "Oracle request exceeds 65536 UTF-8 bytes.")
-		}
+		let request = try Self.validatedRequest(rawRequest)
 
 		var pairID = UUID()
 		var boundary = Self.boundary(for: pairID)
