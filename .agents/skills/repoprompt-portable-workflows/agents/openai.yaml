@@ -1,4 +1,4 @@
 interface:
   display_name: "RepoPrompt Portable Workflows"
-  short_description: "Use portable CLI and MCP context workflows"
-  default_prompt: "Use $repoprompt-portable-workflows to inspect this workspace and run the appropriate plan or review workflow."
+  short_description: "Use portable context and Pro Edit workflows"
+  default_prompt: "Use $repoprompt-portable-workflows to inspect this workspace and run the appropriate plan, review, or Pro Edit workflow."

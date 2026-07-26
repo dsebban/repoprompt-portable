@@ -10,7 +10,7 @@ repoprompt-headless --no-persist --root /absolute/workspace
 
 The server intentionally rejects interactive TTY use. Register it as a stdio command in the host agent or MCP client.
 
-Portable software `0.2.0` exposes tool-schema version `1.0.0` on exactly seven tools:
+Portable software `0.3.0` exposes tool-schema version `1.1.0` on exactly seven tools:
 
 - `bind_context`
 - `get_file_tree`
@@ -20,7 +20,7 @@ Portable software `0.2.0` exposes tool-schema version `1.0.0` on exactly seven t
 - `context_builder`
 - `oracle_send`
 
-Inspect the host-provided tool schemas before invocation. Reject an unexpected schema major version.
+Inspect the host-provided tool schemas before invocation. Reject an unexpected schema major version. `context_builder` supports local `clarify` and provider-backed `plan|review|pro_edit`; `oracle_send` remains `chat|question|plan|review`.
 
 ## Connection lifecycle
 
@@ -34,7 +34,7 @@ Selection and session state are process-local and ephemeral under `--no-persist`
 
 ## Provider configuration
 
-Provider-free discovery, reads, selection, and `context_builder(..., "clarify")` need no API key.
+Provider-free discovery, reads, selection, and `context_builder(..., response_type: "clarify")` need no API key.
 
 Provider-backed calls require either `OPENCODE_API_KEY` defaults or the complete explicit tuple:
 

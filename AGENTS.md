@@ -4,7 +4,7 @@
 
 RepoPrompt Portable is a Swift package with two executable products: `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL runner over the same `RepoPromptHeadless` library/catalog. There is no web UI or long-running product HTTP server. See `README.md` and `docs/architecture/portable-oracle-mcp.md` for the current contract.
 
-Portable software `0.2.0` advertises tool-schema version `1.0.0` on all seven tools. `context_builder` supports local `clarify` plus provider-backed `plan|review`; `oracle_send` always attaches the explicit selection. Provider-backed calls fail closed on any omission/truncation. Caller-supplied `review_diff` and `clarify_handoff` are untrusted evidence sent to both concurrent Oracle lanes.
+Portable software `0.3.0` advertises tool-schema version `1.1.0` on all seven tools. `context_builder` supports local `clarify` plus provider-backed `plan|review|pro_edit`; `oracle_send` remains `chat|question|plan|review` and always attaches the explicit selection. Pro Edit returns two independent opaque instruction artifacts and projects Primary at the top level; portable never parses, validates, delegates, applies, writes, persists, or certifies them. Provider-backed calls fail closed on any omission/truncation. Caller-supplied `review_diff` and `clarify_handoff` are untrusted evidence sent to both concurrent Oracle lanes.
 
 ### Toolchain
 
@@ -21,7 +21,7 @@ Portable software `0.2.0` advertises tool-schema version `1.0.0` on all seven to
 - Run Python verification with:
   - `python3 Scripts/test_verify_portable_release.py`
   - `python3 -m py_compile Scripts/*.py benchmarks/*.py`
-- Run release source policy with `python3 Scripts/verify_portable_release.py source --expected-version 0.2.0`. This rejects embedded OpenCode credentials, unpinned Docker bases, missing binaries, and any third-party GitHub Action not pinned to a full commit SHA.
+- Run release source policy with `python3 Scripts/verify_portable_release.py source --expected-version 0.3.0`. This rejects embedded OpenCode credentials, unpinned Docker bases, missing binaries, and any third-party GitHub Action not pinned to a full commit SHA.
 - The server exits with a usage error on a TTY. Drive stdio from an MCP client or `Scripts/portable_oracle_mcp_smoke.py`. Native run:
   `swift run repoprompt-headless --no-persist --root /path/to/workspace`.
 - Provider-free tools and `context_builder(..., response_type:"clarify")` need no API key. Provider-backed builder modes and `oracle_send` require either `OPENCODE_API_KEY` defaults or the complete explicit endpoint/Primary/Secondary tuple. Do not pass `OPENCODE_API_KEY` for an explicit Surf-only Oracle.
@@ -48,7 +48,7 @@ Portable software `0.2.0` advertises tool-schema version `1.0.0` on all seven to
 - Surf `2.13.3` advertises `gpt-5.6-sol-xhigh`. The recipe uses that compound ID for both lanes plus matching `REPOPROMPT_ORACLE_REASONING_EFFORT=xhigh`. Portable starts both lanes concurrently; Surf must permit two requests.
 - Keep the default image UID/GID `10001` for readable, read-only workspaces. Use `--user "$(id -u):$(id -g)" --env HOME=/tmp` only when host permissions or a writable export mount require host ownership.
 - Register the wrapper as the `mcpServers.repoprompt-portable.command`. Verify initialize and all schemas with:
-  `python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.0.0`.
+  `python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.1.0`.
 
 ### Release policy
 

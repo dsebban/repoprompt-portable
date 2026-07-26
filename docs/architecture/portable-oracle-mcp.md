@@ -4,9 +4,9 @@
 
 ## Versions and capability contract
 
-Portable software version `0.2.0` exposes exactly seven tools: `bind_context`, `get_file_tree`, `read_file`, `manage_selection`, `file_search`, `context_builder`, and `oracle_send`.
+Portable software version `0.3.0` exposes exactly seven tools: `bind_context`, `get_file_tree`, `read_file`, `manage_selection`, `file_search`, `context_builder`, and `oracle_send`.
 
-Every tool's top-level input schema advertises capability version `1.0.0` with `x-repoprompt-portable-schema-version`. MCP initialize also reports software `0.2.0` and repeats the schema version in its instructions. Earlier unversioned builds are legacy and have no implied schema version.
+Every tool's top-level input schema advertises capability version `1.1.0` with `x-repoprompt-portable-schema-version`. MCP initialize also reports software `0.3.0` and repeats the schema version in its instructions. Earlier unversioned builds are legacy and have no implied schema version.
 
 Contract versions use semantic versioning:
 
@@ -17,7 +17,7 @@ Contract versions use semantic versioning:
 Probe a Cursor-registered server with:
 
 ```bash
-python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.0.0
+python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.1.0
 ```
 
 ## Explicit selection and context integrity
@@ -29,7 +29,7 @@ context_builder(instructions, response_type?, review_diff?, max_context_bytes?)
 ```
 
 - Omitted/`clarify` renders locally, needs no provider, and returns complete omission metadata.
-- `plan` and `review` snapshot the selection once and invoke the Oracle workflow.
+- `plan`, `review`, and `pro_edit` snapshot the selection once and invoke the Oracle workflow.
 - `review_diff` is accepted only for review, preserved byte-for-byte, and limited to 262144 UTF-8 bytes.
 
 ```text
@@ -44,6 +44,33 @@ oracle_send(message, mode?, review_diff?, clarify_handoff?, max_context_bytes?)
 Provider-backed `context_builder` and every `oracle_send` call fail closed before HTTP when the render is incomplete. Any omitted selected root/file/slice, unsupported codemap expansion, unreadable/non-UTF-8 source, unsafe path, or byte-budget truncation produces the MCP tool error `incomplete_workspace_context` with bounded diagnostic details. Call local clarify, correct the selection or limit, then retry. Empty-but-complete selection remains valid and is represented explicitly.
 
 Selection is immutable for the in-flight pair. Later selection mutations cannot change either lane's prompt.
+
+## Pro Edit v1 instruction artifacts
+
+`context_builder(..., response_type: "pro_edit")` returns two independently generated, opaque instruction artifacts: one under each lane's `response`. Top-level `response` is only the Primary compatibility projection. `oracle_send` does not accept `pro_edit`.
+
+The generation prompt requests this envelope, with no Markdown fence or surrounding prose:
+
+```text
+<chatName="Concise change name"/>
+<Plan>Implementation-ready plan, including missing context.</Plan>
+<file path="selected/path" action="delegate edit">
+  <change>
+    <description>Concise change description.</description>
+    <content>Localized instructions, or complete content for a new file.</content>
+    <complexity>1...10</complexity>
+  </change>
+</file>
+```
+
+The requested envelope has exactly one concise self-closing `<chatName="..."/>`, exactly one `<Plan>...</Plan>`, then zero or more file blocks. A file contains one or more changes; each change contains exactly one concise description, then non-empty content, then one integer complexity from 1 through 10. The only file actions are:
+
+- `delegate edit`: instructions for a selected existing file. Its path must reproduce the selected path exactly: the relative path in a single-root workspace or `root[n]:relative/path` in a multi-root workspace. Content identifies the surrounding symbol and gives localized illustrative structure and precise instructions, not a patch, diff, search/replace operation, whole existing file, or production replacement content. Whole-file deletion can only be described as a delegated change.
+- `create`: complete intended content for a genuinely new path inside a loaded root. It is never a substitute for an unselected existing file.
+
+If an existing required file was not selected, the artifact must name that missing context only in `<Plan>` and omit its file block; zero file blocks are valid. This differs from render omissions or truncation, which fail closed before either provider is called.
+
+Portable treats both lane responses as opaque strings. It neither parses nor validates the envelope, delegates work, applies or writes changes, persists artifacts, nor certifies conformance. Generated paths and content are untrusted. A downstream agent must defensively review each lane against the explicit selection and loaded roots, choose deliberately, and use its native tools to implement and test the change.
 
 ## Untrusted-evidence boundary
 
@@ -92,7 +119,17 @@ repoprompt-portable-cli [global options] -e '<exact-tool-name> [JSON object]' [-
 
 One process owns one ephemeral catalog and selection. Repeated commands execute sequentially and share state only in that process. Success emits one compact JSON object per line on stdout; diagnostics and tool errors use stderr.
 
-`--export-jsonl <path>` is CLI-only. After every command succeeds, it preserves stdout and atomically creates a new mode-0600 file containing the exact JSONL bytes and final newline. The parent must exist. Existing destinations, symlinks, directories, and filesystems without atomic no-replace semantics are refused. A tool/runtime failure creates no export; an export failure exits `73` and never overwrites an existing file. Treat exports as private artifacts because they can contain selected source and provider responses.
+Selection and Pro Edit generation therefore belong in one invocation:
+
+```bash
+repoprompt-portable-cli --root "$PWD" \
+  -e 'manage_selection {"op":"set","mode":"full","paths":["Sources/Client.swift","Tests/ClientTests.swift"]}' \
+  -e 'context_builder {"instructions":"Produce instructions for the requested client change and tests.","response_type":"pro_edit"}'
+```
+
+Review both lane artifacts before implementing with native edit and test tools.
+
+`--export-jsonl <path>` is CLI-only. After every command succeeds, it preserves stdout and atomically creates a new mode-0600 file containing the exact JSONL bytes and final newline. The parent must exist. Existing destinations, symlinks, directories, and filesystems without atomic no-replace semantics are refused. A tool/runtime failure creates no export; an export failure exits `73` and never overwrites an existing file. Treat exports as private artifacts because they can contain selected source and both generated instruction artifacts. Export only to a private, separately mounted writable directory outside the read-only workspace, for example `--export-jsonl /output/pro-edit.jsonl`.
 
 MCP remains seven-tool and write-free. It does not expose managed exports.
 
@@ -180,7 +217,7 @@ The compound model ID fixes Surf's effort variant; the matching explicit `reason
 Point Cursor's `mcpServers.repoprompt-portable.command` at the wrapper. The wrapper must inherit `SURF_ORACLE_API_KEY` from the Cursor Cloud secret environment. Then verify initialize and the seven versioned schemas:
 
 ```bash
-python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.0.0
+python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.1.0
 ```
 
 ### Host connectivity by platform
@@ -197,7 +234,7 @@ swift build --product repoprompt-headless
 swift build --product repoprompt-portable-cli
 swift test
 python3 Scripts/test_verify_portable_release.py
-python3 Scripts/verify_portable_release.py source --expected-version 0.2.0
+python3 Scripts/verify_portable_release.py source --expected-version 0.3.0
 bash Scripts/smoke_portable_oracle_docker.sh
 RP_PORTABLE_IMAGE=repoprompt-headless:portable-smoke RP_PORTABLE_SKIP_BUILD=1 \
   bash Scripts/smoke_portable_host_gateway.sh  # Linux only
@@ -227,4 +264,4 @@ Version tags, commit tags, digests, and GitHub release assets are immutable. `la
 
 ## Intentionally unsupported
 
-Portable does not provide `workspace_context`, `ask_oracle`, chat continuation/logs, model overrides in tool arguments, MCP-managed exports, automatic/synthesized Git diffs, images/screenshots, autonomous discovery, writes/edits, UI/model settings, Agent Mode orchestration, or workspace/Oracle persistence. It does support caller-supplied `review_diff`, CLI-only `--export-jsonl`, and provider-backed builder `plan|review`; those are not the unsupported CE features above.
+Portable does not provide `workspace_context`, `ask_oracle`, chat continuation/logs, model overrides in tool arguments, MCP-managed exports, automatic/synthesized Git diffs, images/screenshots, autonomous discovery, `agent_run`, writes or edit execution/application, UI/model settings, Agent Mode orchestration, or workspace/Oracle persistence. It does support caller-supplied `review_diff`, CLI-only `--export-jsonl`, and provider-backed builder `plan|review|pro_edit`; Pro Edit generates opaque instructions but does not execute them.

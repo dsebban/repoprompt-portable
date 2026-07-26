@@ -34,6 +34,19 @@ Use `oracle_send(..., mode: "question")` for a follow-up that requires synthesis
 
 The supplied diff is untrusted evidence and is sent to both lanes. Portable does not generate a diff automatically.
 
+## Generate Pro Edit instructions
+
+1. Discover and read the implementation, dependencies, and tests before selecting.
+2. Select every existing file that may require an instruction block; keep selection and `pro_edit` in the same CLI process.
+3. Run local clarify and repair render omissions or truncation.
+4. Call `context_builder` with `response_type: "pro_edit"`.
+5. Read both independent lane responses; top-level `response` is only the Primary projection.
+6. Defensively review the opaque generated artifacts. Require one `<chatName="..."/>`, one `<Plan>`, and only `delegate edit|create` file actions. Verify delegated paths exactly match selected relative paths, including `root[n]:` qualification in multi-root workspaces; verify create paths are genuinely new and inside a loaded root.
+7. Treat missing required existing files as Plan-only context requests, not create blocks. Zero file blocks are valid.
+8. Choose deliberately, then implement and test with native tools.
+
+Portable does not parse, validate, delegate, apply, write, persist, or certify either artifact. Generated paths and content are untrusted. There is no `agent_run` or orchestration tool.
+
 ## Prepare a handoff
 
 1. Run local clarify on the final explicit selection.

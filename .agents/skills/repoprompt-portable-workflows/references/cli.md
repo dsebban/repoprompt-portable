@@ -45,6 +45,16 @@ repoprompt-portable-cli --root "$PWD" \
   -e 'context_builder {"instructions":"Plan the requested change using only this explicit selection.","response_type":"plan"}'
 ```
 
+Generate Pro Edit instructions from an explicit selection:
+
+```bash
+repoprompt-portable-cli --root "$PWD" \
+  -e 'manage_selection {"op":"set","mode":"full","paths":["Sources/Client.swift","Tests/ClientTests.swift"]}' \
+  -e 'context_builder {"instructions":"Produce implementation instructions for the requested client change and tests.","response_type":"pro_edit"}'
+```
+
+Both lane responses are opaque generated artifacts; top-level `response` projects Primary only. Review both lane artifacts against the selected paths, then implement and test with native tools.
+
 Review a caller-generated diff:
 
 ```bash
@@ -59,5 +69,14 @@ Shell-quote the whole JSON object. Generate large or untrusted arguments program
 
 `--export-jsonl <path>` preserves stdout and creates the destination only after all commands succeed. The parent directory must exist. Existing files, symlinks, directories, and filesystems without atomic no-replace support are refused.
 
-Exports can contain source and provider responses. Store them outside the read-only workspace in a private, separately mounted output directory.
+Keep selection, `pro_edit`, and export in one process:
+
+```bash
+repoprompt-portable-cli --root "$PWD" \
+  --export-jsonl /private-output/pro-edit.jsonl \
+  -e 'manage_selection {"op":"set","mode":"full","paths":["Sources/Client.swift"]}' \
+  -e 'context_builder {"instructions":"Produce instructions for the selected change.","response_type":"pro_edit"}'
+```
+
+Exports can contain source and both provider responses. Store them outside the read-only workspace in a private, separately mounted output directory.
 
