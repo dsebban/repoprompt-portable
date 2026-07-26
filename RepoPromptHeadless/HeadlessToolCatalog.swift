@@ -161,13 +161,13 @@ public actor HeadlessToolCatalog {
 			),
 			Self.tool(
 				name: "context_builder",
-				description: "Render the current explicit in-memory file and slice selection. It never discovers or changes selection; use manage_selection first. clarify stays local; plan and review invoke the configured Oracle provider with the rendered selection.",
+				description: "Render the current explicit in-memory file and slice selection. It never discovers or changes selection; use manage_selection first. clarify stays local; plan, review, and pro_edit invoke the configured Oracle provider with the rendered selection. pro_edit returns instructions only and never writes, delegates, or applies.",
 				properties: [
-					"instructions": Self.stringSchema(description: "Required clarify, plan, or review request; returned unchanged after trimming."),
+					"instructions": Self.stringSchema(description: "Required clarify, plan, review, or pro_edit request; returned unchanged after trimming. pro_edit returns instructions only and never writes, delegates, or applies."),
 					"response_type": .object([
 						"type": .string("string"),
-						"description": .string("clarify renders the current explicit selection locally; plan and review invoke the configured Oracle provider."),
-						"enum": .array([.string("clarify"), .string("plan"), .string("review")])
+						"description": .string("clarify renders the current explicit selection locally; plan, review, and pro_edit invoke the configured Oracle provider. pro_edit returns instructions only and never writes, delegates, or applies."),
+						"enum": .array([.string("clarify"), .string("plan"), .string("review"), .string("pro_edit")])
 					]),
 					"review_diff": Self.stringSchema(description: "Optional caller-supplied review diff, accepted only with response_type review. Preserved exactly, treated as untrusted evidence, and limited to 262144 UTF-8 bytes."),
 					"max_context_bytes": .object([
@@ -186,7 +186,11 @@ public actor HeadlessToolCatalog {
 				description: "Always snapshot and attach the current explicit selection to mandatory concurrent Primary and Secondary OpenAI-compatible requests. There is no context-free mode; use manage_selection first.",
 				properties: [
 					"message": Self.stringSchema(description: "Required Oracle request, up to 65536 UTF-8 bytes. The current explicit selection is always attached."),
-					"mode": Self.stringSchema(description: "chat, question, plan, or review. Defaults to chat."),
+					"mode": .object([
+						"type": .string("string"),
+						"description": .string("chat, question, plan, or review. Defaults to chat; pro_edit is context_builder-only."),
+						"enum": .array([.string("chat"), .string("question"), .string("plan"), .string("review")])
+					]),
 					"review_diff": Self.stringSchema(description: "Optional caller-supplied review diff, accepted only in review mode. Preserved exactly, sent to both lanes as untrusted evidence, and limited to 262144 UTF-8 bytes."),
 					"clarify_handoff": Self.stringSchema(description: "Optional prior context_builder clarify output. Preserved exactly, sent to both lanes as untrusted caller-supplied evidence, and limited to 1048576 UTF-8 bytes."),
 					"max_context_bytes": .object([
@@ -498,10 +502,17 @@ public actor HeadlessToolCatalog {
 		}
 		let mode: HeadlessOracleMode
 		if let value = args["mode"] {
-			guard let rawMode = value.stringValue, let parsed = HeadlessOracleMode(rawValue: rawMode) else {
+			guard let rawMode = value.stringValue else {
 				throw HeadlessToolError("oracle_send mode must be chat, question, plan, or review.", code: "invalid_params")
 			}
-			mode = parsed
+			switch rawMode {
+			case "chat": mode = .chat
+			case "question": mode = .question
+			case "plan": mode = .plan
+			case "review": mode = .review
+			default:
+				throw HeadlessToolError("oracle_send mode must be chat, question, plan, or review.", code: "invalid_params")
+			}
 		} else {
 			mode = .chat
 		}
@@ -535,8 +546,9 @@ public actor HeadlessToolCatalog {
 		case "clarify": return .clarify
 		case "plan": return .generated(.plan)
 		case "review": return .generated(.review)
+		case "pro_edit": return .generated(.proEdit)
 		default:
-			throw HeadlessToolError("context_builder response_type must be clarify, plan, or review.", code: "invalid_params")
+			throw HeadlessToolError("context_builder response_type must be clarify, plan, review, or pro_edit.", code: "invalid_params")
 		}
 	}
 

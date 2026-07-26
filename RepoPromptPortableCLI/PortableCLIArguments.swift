@@ -114,9 +114,9 @@ public struct PortableCLIArguments: Equatable, Sendable {
 			\(executable) [global options] -e '<exact-tool-name> [JSON object]' [-e ...]
 
 		Contract:
-			context_builder accepts clarify|plan|review; clarify is local.
+			context_builder accepts clarify|plan|review|pro_edit; clarify is local and pro_edit returns instructions only.
 			Provider-backed builder modes and oracle_send always attach the complete current explicit selection and run Primary/Secondary concurrently.
-			review_diff and clarify_handoff are caller-supplied untrusted evidence sent to both lanes.
+			oracle_send remains limited to chat|question|plan|review; review_diff and clarify_handoff are caller-supplied untrusted evidence sent to both lanes.
 
 		Global options:
 			--root <path>              Repeatable workspace root; defaults to the current directory.

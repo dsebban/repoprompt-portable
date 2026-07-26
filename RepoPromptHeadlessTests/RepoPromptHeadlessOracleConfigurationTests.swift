@@ -112,6 +112,9 @@ final class RepoPromptHeadlessOracleConfigurationTests: XCTestCase {
 		XCTAssertTrue(usage.contains("REPOPROMPT_ORACLE_ENDPOINT"))
 		XCTAssertTrue(usage.contains("REPOPROMPT_ORACLE_REASONING_EFFORT"))
 		XCTAssertTrue(usage.contains("1...3600"))
+		XCTAssertTrue(usage.contains("plan/review/pro_edit"))
+		XCTAssertTrue(usage.contains("pro_edit returns instructions only"))
+		XCTAssertTrue(usage.contains("oracle_send remains limited to chat/question/plan/review"))
 		XCTAssertFalse(usage.contains("--oracle-endpoint"))
 	}
 }

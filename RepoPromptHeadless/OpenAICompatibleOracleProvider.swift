@@ -13,6 +13,7 @@ enum HeadlessOracleMode: String, Equatable, Sendable {
 	case question
 	case plan
 	case review
+	case proEdit = "pro_edit"
 }
 
 indirect enum HeadlessOracleJSONValue: Codable, Equatable, Sendable {

@@ -10,7 +10,7 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 			secondary: .response("secondary answer")
 		)
 		let workflow = try makeWorkflow(provider: provider, primaryModel: "same", secondaryModel: "same")
-		let result = try await workflow.execute(mode: .question, request: "  explain  ", context: try emptyContext())
+		let result = try await workflow.execute(mode: .proEdit, request: "  edit  ", context: try emptyContext())
 		let requests = await provider.recordedRequests()
 
 		XCTAssertEqual(requests.count, 2)
@@ -31,8 +31,8 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 			primaryDelayNanoseconds: 50_000_000
 		)
 		let result = try await makeWorkflow(provider: provider).execute(
-			mode: .plan,
-			request: "plan",
+			mode: .proEdit,
+			request: "edit",
 			context: try emptyContext()
 		)
 
@@ -52,8 +52,8 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 			secondary: .failure(.init(.httpError, message: "secondary failed", httpStatus: 500))
 		)
 		let result = try await makeWorkflow(provider: provider).execute(
-			mode: .review,
-			request: "review",
+			mode: .proEdit,
+			request: "edit",
 			context: try emptyContext()
 		)
 
@@ -84,14 +84,14 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		XCTAssertEqual(result.secondary.response, "secondary must stay secondary")
 	}
 
-	func testBothFailuresRemainIndependentTerminalResults() async throws {
+	func testProEditBothFailuresRemainIndependentTerminalResults() async throws {
 		let provider = RecordingOracleProvider(
 			primary: .failure(.init(.networkError, message: "primary network")),
 			secondary: .failure(.init(.invalidResponse, message: "secondary invalid"))
 		)
 		let result = try await makeWorkflow(provider: provider).execute(
-			mode: .chat,
-			request: "answer",
+			mode: .proEdit,
+			request: "edit",
 			context: try emptyContext()
 		)
 
@@ -100,14 +100,14 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		XCTAssertEqual(result.secondary.failure?.code, "invalid_response")
 	}
 
-	func testEmptyCompletionRetainsProviderMetadataOnFailedLane() async throws {
+	func testProEditEmptyCompletionRetainsProviderMetadataOnFailedLane() async throws {
 		let provider = RecordingOracleProvider(
 			primary: .response("   "),
 			secondary: .response("secondary answer")
 		)
 		let result = try await makeWorkflow(provider: provider).execute(
-			mode: .chat,
-			request: "answer",
+			mode: .proEdit,
+			request: "edit",
 			context: try emptyContext()
 		)
 
@@ -122,7 +122,7 @@ final class RepoPromptHeadlessOracleWorkflowTests: XCTestCase {
 		let provider = CancellingOracleProvider()
 		let workflow = try makeWorkflow(provider: provider)
 		let task = Task {
-			try await workflow.execute(mode: .chat, request: "wait", context: try emptyContext())
+			try await workflow.execute(mode: .proEdit, request: "wait", context: try emptyContext())
 		}
 		try await provider.waitForArrivals(2)
 		task.cancel()

@@ -8,7 +8,10 @@ final class RepoPromptHeadlessTests: XCTestCase {
 		let instructions = HeadlessMCPService.initializeInstructions
 		XCTAssertTrue(instructions.contains("manage_selection is the only selection mutation interface"))
 		XCTAssertTrue(instructions.contains("context_builder renders only the current explicit"))
-		XCTAssertTrue(instructions.contains("oracle_send always snapshots and attaches the current explicit selection"))
+		XCTAssertTrue(instructions.contains("provider-backed plan/review/pro_edit"))
+		XCTAssertTrue(instructions.contains("pro_edit produces instructions only and never writes or executes"))
+		XCTAssertTrue(instructions.contains("oracle_send remains limited to chat/question/plan/review"))
+		XCTAssertTrue(instructions.contains("always snapshots and attaches the current explicit selection"))
 		XCTAssertTrue(instructions.contains("Portable tool schema version: \(PortableContract.toolSchemaVersion)."))
 	}
 

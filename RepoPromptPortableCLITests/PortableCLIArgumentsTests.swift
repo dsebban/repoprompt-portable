@@ -47,7 +47,11 @@ final class PortableCLIArgumentsTests: XCTestCase {
 			"-e", "get_file_tree {}"
 		])
 		XCTAssertEqual(exec.exportPath, "/tmp/result.jsonl")
-		XCTAssertTrue(PortableCLIArguments.usage(executable: "portable").contains("--export-jsonl <path>"))
+		let usage = PortableCLIArguments.usage(executable: "portable")
+		XCTAssertTrue(usage.contains("--export-jsonl <path>"))
+		XCTAssertTrue(usage.contains("clarify|plan|review|pro_edit"))
+		XCTAssertTrue(usage.contains("pro_edit returns instructions only"))
+		XCTAssertTrue(usage.contains("oracle_send remains limited to chat|question|plan|review"))
 	}
 
 	func testRejectsInvalidExportJSONLOptions() {

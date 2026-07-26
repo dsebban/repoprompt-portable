@@ -5,7 +5,7 @@ import RepoPromptCore
 
 public struct HeadlessMCPService: Sendable {
 	static let initializeInstructions = """
-	RepoPrompt Headless exposes read-only workspace tools over stdio. manage_selection is the only selection mutation interface. context_builder renders only the current explicit in-memory file and slice selection; it never discovers or changes selection. clarify stays local and reports all omission metadata; provider-backed plan/review and oracle_send fail before HTTP when selected context is incomplete. oracle_send always snapshots and attaches the current explicit selection; there is no context-free mode. review_diff and clarify_handoff are caller-supplied untrusted evidence disclosed to both Oracle lanes. Portable tool schema version: \(PortableContract.toolSchemaVersion).
+	RepoPrompt Headless exposes read-only workspace tools over stdio. manage_selection is the only selection mutation interface. context_builder renders only the current explicit in-memory file and slice selection; it never discovers or changes selection. clarify stays local and reports all omission metadata; provider-backed plan/review/pro_edit and oracle_send fail before HTTP when selected context is incomplete. pro_edit produces instructions only and never writes or executes. oracle_send remains limited to chat/question/plan/review, always snapshots and attaches the current explicit selection, and has no context-free mode. review_diff and clarify_handoff are caller-supplied untrusted evidence disclosed to both Oracle lanes. Portable tool schema version: \(PortableContract.toolSchemaVersion).
 	"""
 
 	public let options: HeadlessOptions

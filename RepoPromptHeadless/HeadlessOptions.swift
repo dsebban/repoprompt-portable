@@ -99,7 +99,7 @@ public struct HeadlessOptions: Equatable, Sendable {
 
 		Run RepoPrompt as a direct headless stdio MCP server. Protocol frames are read from stdin and written to stdout; diagnostics go to stderr.
 
-		context_builder clarify is local; plan/review and oracle_send always attach the complete current explicit selection and dispatch concurrent Primary/Secondary requests. review_diff and clarify_handoff are caller-supplied untrusted evidence sent to both lanes.
+		context_builder clarify is local; plan/review/pro_edit and oracle_send always attach the complete current explicit selection and dispatch concurrent Primary/Secondary requests. pro_edit returns instructions only; oracle_send remains limited to chat/question/plan/review. review_diff and clarify_handoff are caller-supplied untrusted evidence sent to both lanes.
 
 		Options:
 		  --root <path>              Repeatable workspace root. Defaults to the current working directory.
