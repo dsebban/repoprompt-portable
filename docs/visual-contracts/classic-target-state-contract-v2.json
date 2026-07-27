@@ -1,0 +1,343 @@
+{
+  "schema_version": 2,
+  "contract_id": "classic-target-state-2026-07-26-v2",
+  "status": "blocked_missing_screenshot_time_state",
+  "iteration_10_authorized": false,
+  "contract_rule": "Do not create or claim an exact-state v2 fixture until every required screenshot-time field below is source-attested. The v1 scenario may be used only as an unchanged renderer control.",
+  "target": {
+    "source_path": "/Users/danielsivan/Desktop/Screenshot 2026-07-26 at 15.37.19.png",
+    "frozen_path": "docs/visual-contracts/classic-parity-target-v1.png",
+    "sha256": "07ec2644bcbf4f3a9f4eec7aa56d53404d8cbd933b75f7f490e11a25339ba916",
+    "raw_pixels": [
+      3008,
+      1920
+    ],
+    "color_profile": "Display P3",
+    "normalized_canvas": [
+      1956,
+      1252
+    ],
+    "normalization_id": "srgb-aspect-fill-lanczos-v1",
+    "frozen_copy_byte_identical": true
+  },
+  "attestation": {
+    "classic_repository": "/Users/danielsivan/dev/repoprompt-classic",
+    "classic_head": "c356ec4cfd1a757828cd495c4865c81f5338daa0",
+    "workspace_snapshot": "/Users/danielsivan/Library/Application Support/RepoPrompt Classic/Workspaces/Workspace-repoprompt-classic-4741B299-5E72-4FAD-997A-1AB6A7BC5FF4/workspace.json",
+    "workspace_snapshot_is_post_target_and_has_selection_drift": true,
+    "oracle_export": "/Users/danielsivan/Library/Application Support/RepoPrompt Classic/GeneratedOracleExports/oracle-plan-2026-07-27-093900-chat-fdda.md",
+    "repo_prompt_cli_window": 3,
+    "source_files": [
+      {
+        "path": "RepoPrompt/App/Views/ContentView.swift",
+        "sha256": "f731b146369233f269653b3d8a47cd78d4d4ce0cb41b97a5bad1ff62eb35c69a",
+        "evidence": "NavigationSplitView at line 60; FileTreeView at 277; TabbedPromptView at 307; AgentModeToggle at 363; MCPServerToggleView at 378."
+      },
+      {
+        "path": "RepoPrompt/Features/Prompt/Views/TabbedPromptView.swift",
+        "sha256": "2cbd6934904e586c2f900e405aa0dfcbe09acc095f767dcf6513bb47761e6e89",
+        "evidence": "ComposeTabBar at line 34; Compose and Chat labels at 118-119; PromptView compose branch at 166."
+      },
+      {
+        "path": "RepoPrompt/Features/Prompt/Views/PromptView.swift",
+        "sha256": "2a212ec53c685f6d92d2e038f413d66ea3fca61a8ef483b62cc6f0707c1a4a5c",
+        "evidence": "InstructionsView at line 73, FilesTabSelector at 85, TabbedFileSelectionContent at 97, UnifiedPresetBar at 139."
+      },
+      {
+        "path": "RepoPrompt/Features/Prompt/Views/InstructionsView.swift",
+        "sha256": "ee44d63fe411cd64a43c0f4a51afc7b7067120ed5934111e4a5ef99c7055f186",
+        "evidence": "instructionsViewCollapsed defaults false at lines 18-20; header is collapse control, Instructions title, copy, and clear; editor follows the divider."
+      },
+      {
+        "path": "RepoPrompt/Features/Prompt/Views/Components/FilesTabSelector.swift",
+        "sha256": "a883cc75a408eded58fa687145c66cc7465c2f9b2d73dd6a35928e8a184f17b2",
+        "evidence": "Selected Files, Context Builder, and Apply XML enum labels at lines 12-14."
+      },
+      {
+        "path": "RepoPrompt/Features/Prompt/ViewModels/SelectedFilesPanelViewModel.swift",
+        "sha256": "9e37e65b9524de094934f18b26c004cecbfb83f4b81f9e7176f1f26afa989ff4",
+        "evidence": "Selected Files count is stats.fullCount and blue count is stats.codemapCount at lines 563-564."
+      },
+      {
+        "path": "RepoPrompt/Features/Prompt/Views/Components/DiscoverAgentView.swift",
+        "sha256": "7d9e410144f13fd1a6dffe10c6b0396bb882dba099e4ff42d09bed718f2a51da",
+        "evidence": "What are you working on? at line 26; ContextBuilderHeaderBar at 853; Task Description at 1180; settings and Run hierarchy at 1252-1326."
+      },
+      {
+        "path": "RepoPrompt/Infrastructure/UI/Components/MCPServerToggleView.swift",
+        "sha256": "63fb60090bc543592a13df2f4de30de184b7fd2ec41b4acc40243fe28a6b62f7",
+        "evidence": "Popover stack is header, server control, model presets, Context Builder agent, quick actions, and settings at lines 186-198."
+      },
+      {
+        "path": "RepoPrompt/Features/WorkspaceFiles/Utilities/SortingUtils.swift",
+        "sha256": "6fd37b3d0ca6adaa3f31a4ca06f0584eba45277056e4c7077983a2c93dd74ba0",
+        "evidence": "file-tree ordering is folders first, then files, with name-ascending support."
+      }
+    ]
+  },
+  "target_state": {
+    "window": {
+      "title": "repoprompt-classic",
+      "visually_key_and_active": true,
+      "visually_key_and_active_confidence": "medium",
+      "exact_key_window_state": "missing",
+      "first_responder": "missing",
+      "task_editor_blue_focus_ring_observed": true,
+      "toolbar": {
+        "mode_control": "IDE",
+        "recommendation_lightbulb_visible": true,
+        "mcp_server_button_visible": true
+      }
+    },
+    "workspace": {
+      "roots_in_visible_order": [
+        "/Users/danielsivan/dev/repoprompt-classic",
+        "/Users/danielsivan/dev/repoprompt-ce"
+      ],
+      "roots_order_confidence": "high",
+      "roots_json_sha256": "58abd7664245da671b25fa3bde9014053c92d78a7b8f6318351fac3da54299fc",
+      "active_compose_tab_id": "AF7F9A85-CC8A-4B77-8C3A-489081D74F7F",
+      "active_compose_tab_name": "OpenCode empty ACP",
+      "active_tab_visible_label": "OpenCode...",
+      "search_text": "",
+      "tree": {
+        "repoprompt-classic": {
+          "expanded": false,
+          "checkbox": "mixed"
+        },
+        "repoprompt-ce": {
+          "expanded": true,
+          "checkbox": "unchecked",
+          "visible_children_in_order": [
+            ".agents",
+            ".github",
+            "AppBundle",
+            "AppResources",
+            "docs",
+            "Packages",
+            "Scripts",
+            "Sources",
+            "Tests",
+            "ThirdPartyLicenses",
+            "Vendor",
+            ".gitattributes",
+            ".gitignore",
+            ".ignore",
+            ".repo_ignore",
+            ".swiftformat",
+            ".swiftlint.yml"
+          ]
+        },
+        "vertical_scroll_position": "visually_at_top_but_exact_offset_missing"
+      }
+    },
+    "compose": {
+      "selected_top_mode": "Compose",
+      "selected_file_tab": "Context Builder",
+      "selected_files_badge": {
+        "full_count": 17,
+        "codemap_count": 23,
+        "meaning_source_attested": true,
+        "exact_screenshot_time_path_roles_and_slices": "missing"
+      },
+      "instructions": {
+        "expanded": true,
+        "header_controls": [
+          "collapse",
+          "copy",
+          "clear"
+        ],
+        "viewport": "starts_at_taskname",
+        "exact_scroll_offset": "missing",
+        "persisted_candidate_sha256": "b46b6d7259e87cd3b630bf5ffd0e0d0a7306f10be6af6be928fbb50d60f10e3b",
+        "persisted_candidate_length": 7389,
+        "visible_prefix": "<taskname=\"OpenCode empty ACP\"/>\n\n<task>Perform a read-only investigation of why repoprompt-classic reports a successful OpenCode ACP `stopReason=end_turn` with no assistant content/reasoning and zero usage.",
+        "full_body_status": "Visible content matches the persisted active tab, but the post-target persistence snapshot cannot certify every screenshot-time byte."
+      },
+      "context_builder": {
+        "title": "What are you working on?",
+        "subtitle": "Use Codex or Claude Code to explore your codebase, enhance your prompt, and assemble relevant context for your task.",
+        "model_label": "Codex CLI · GPT-5.6 Sol Low",
+        "prompts_button_visible": true,
+        "task_label": "Task Description",
+        "budget_label": "Budget 160k",
+        "run_button_label": "Run",
+        "auto_generate_plan": false,
+        "selected_prompt_ids": [],
+        "follow_up_type": "plan",
+        "task_sha256": "b6356d8997c193c722b86a6ba61e8d25e07a9a91c18e0a13c7324a95da656a67",
+        "task_text": "<task>Investigate why repoprompt-classic reports: “OpenCode ACP completed with stopReason=end_turn but emitted no assistant content or reasoning chunks. Prompt usage was input=0, output=0, total=0. RepoPrompt did not receive model text to render.” Compare against current repoprompt-ce, identify the precise root cause and latest fixes absent from Classic, rule out alternate causes, and recommend exact backport locations. This is read-only investigation.</task>\n\n<context>\nSee investigation report at `/Users/danielsivan/dev/repoprompt-classic/docs/investigations/opencode-acp-empty-end-turn-2026-07-26.md` for symptoms, hypotheses, and git archaeology.\n\nSymptoms:\n- OpenCode ACP returns successful terminal stopReason=end_turn.\n- No normalized assistant content or reasoning chunks are observed.\n- Usage is input=0, output=0, total=0.\n- Classic renders an error rather than assistant-visible text.\n\nPrior research:\n- repoprompt-ce commit 80f1add7 changes this diagnostic from stream type `error` to `final_content`, adds stderr capture and MCP regression coverage.\n- CE follow-up 58a7bdec yields before diagnostic construction to allow stderr processing.\n- Classic behavior dates to aaa19c8 and still emits the diagnostic as an error event.\n\nHypotheses to test:\n- The immediate user-visible failure is Classic’s error-event classification, already fixed in CE.\n- The underlying empty ACP response originates upstream/provider-side; zero usage supports a request/auth/session/provider failure rather than normalization dropping a valid textual chunk.\n- A stderr/JSON-RPC race may hide the provider’s actionable error in Classic.\n- MCP/Agent Mode terminal aggregation may discard error events but retain final_content, explaining CE’s fix.\n\nAreas likely involved:\n- Both roots’ ACPAgentSessionController and ACP event normalization/usage handling.\n- Agent Mode/MCP assistant preview and terminal publication.\n- OpenCode stderr parsing and process lifecycle.\n- Focused regression tests and mock ACP fixtures.\n</context>",
+        "task_viewport": "starts_at_task",
+        "exact_scroll_offset": "missing",
+        "generated_preview": "not visible in target viewport"
+      },
+      "bottom_bar": {
+        "token_label": "~491.20k tokens",
+        "controls_in_order": [
+          "File Tree",
+          "Code Map",
+          "Git",
+          "Prompts (0)",
+          "Copy Prompt",
+          "Standard"
+        ]
+      }
+    },
+    "mcp_popover": {
+      "observed_open": true,
+      "header_window": "Window 5",
+      "status": "Active",
+      "window_tools_enabled": true,
+      "active_tool_text": "Running apply_edits",
+      "auto_start_checked": true,
+      "active_tool_count_badge": 105,
+      "oracle_model_presets_checked": false,
+      "context_builder_model": "Codex CLI · GPT-5.6 Sol Low",
+      "quick_actions": [
+        "Install...",
+        "Skills",
+        "Copy"
+      ],
+      "fixture_status": "not_reconstructible_from_portable_scenario",
+      "reason": "These are transient server, tool-execution, process, and window-routing values rather than persisted visual fixture state."
+    }
+  },
+  "missing_evidence_blocking_exact_fixture_v2": [
+    "The screenshot-time list of 17 full selections and 23 codemap selections, including exact path roles and slice ranges.",
+    "The exact key-window activation state and AppKit first responder.",
+    "Exact sidebar, instructions editor, and Context Builder editor scroll offsets.",
+    "A screenshot-time snapshot of MCP server enablement, active apply_edits execution, tool-count badge 105, auto-start, and Window 5 routing.",
+    "A pre-drift persistence snapshot timestamped at or before the screenshot."
+  ],
+  "fixture_decision": {
+    "exact_state_scenario_v2_created": false,
+    "v1_scenario_preserved": true,
+    "v1_scenario_allowed_use": "Three-sample unchanged renderer control only.",
+    "prohibition": "Do not substitute current live selection or invented files for the missing screenshot-time roles."
+  },
+  "semantic_masks_v2": {
+    "policy": "classic-source-raster-semantic-partition-v2",
+    "metric_id": "rgb-nmae-gaussian-ssim-thresholded-change-v2",
+    "changed_pixel_rule": "A pixel is changed when max(abs(candidate RGB - target RGB)) is strictly greater than 8/255.",
+    "assignment_rule": "Masks cover the normalized canvas exactly once. Assignments are applied in listed order and later rectangles win.",
+    "assignments": [
+      {
+        "name": "detail_base",
+        "rectangles": [
+          [
+            0,
+            0,
+            1956,
+            1252
+          ]
+        ]
+      },
+      {
+        "name": "titlebar_window_chrome",
+        "rectangles": [
+          [
+            0,
+            0,
+            1956,
+            128
+          ]
+        ],
+        "pixels": 250368,
+        "mask_sha256": "59cb92bb9343532430d8a361cec0d3caad7da7e33c72567ddbb5a5a0a1dfafe1"
+      },
+      {
+        "name": "sidebar_base",
+        "rectangles": [
+          [
+            0,
+            128,
+            473,
+            1252
+          ]
+        ],
+        "pixels": 52016,
+        "mask_sha256": "8cbfa625af9be521f8b4c81abb2ff1645d7196299b597b42951247c53ea5675b"
+      },
+      {
+        "name": "sidebar_controls",
+        "rectangles": [
+          [
+            17,
+            151,
+            445,
+            241
+          ],
+          [
+            14,
+            254,
+            456,
+            1252
+          ]
+        ],
+        "pixels": 479636,
+        "mask_sha256": "c19bcd2dd6028ef545c0a08b85f772cfde8c934d5adfddeaa27fa6abb0f53d85"
+      },
+      {
+        "name": "instructions_controls_content",
+        "rectangles": [
+          [
+            473,
+            128,
+            1446,
+            246
+          ],
+          [
+            492,
+            246,
+            1446,
+            630
+          ]
+        ],
+        "pixels": 481150,
+        "mask_sha256": "9a5cbfbf2a721e29a5578c7cac5c2341007c85981255c99c0ea5f5a84939b1b8"
+      },
+      {
+        "name": "builder_controls_content",
+        "rectangles": [
+          [
+            492,
+            648,
+            1938,
+            1091
+          ],
+          [
+            492,
+            1110,
+            1938,
+            1232
+          ]
+        ],
+        "pixels": 816990,
+        "mask_sha256": "34bdb3d61b7c4f4f16ea4273635b638fc5236a586e2a79fe92e89dae9a2776ee"
+      }
+    ],
+    "detail_base_after_overrides": {
+      "pixels": 368752,
+      "mask_sha256": "2b4d9c0c59cd2d9ea1abf0a238ababac258a2ab2876b4c144645c9dd942da806",
+      "note": "This remainder includes the unreconstructible MCP popover. Treat it as state-contaminated and do not use it alone to justify a renderer edit."
+    },
+    "partition_pixels": 2448912
+  },
+  "renderer_owned_measurable_mechanism": {
+    "mechanism": "The portable sidebar base surface fill.",
+    "mask": "sidebar_base",
+    "measurement": "Use sidebar_base NMAE, SSIM, and thresholded changed-pixel count independently of tree/control density.",
+    "scope_limit": "This measurement can authorize only a base-surface color or opacity correction after an unchanged-state control; it cannot authorize geometry, file-role, focus, or transient-overlay changes."
+  },
+  "confidence": {
+    "target_artifact_identity": "high",
+    "visible_hierarchy_and_labels": "high",
+    "roots_and_active_tab": "high",
+    "instructions_and_task_visible_prefixes": "high",
+    "full_screenshot_time_text_bytes": "medium",
+    "selection_roles_and_slices": "low_missing",
+    "focus_activation_and_scroll": "low_missing",
+    "mcp_transient_state_reconstruction": "low_missing",
+    "exact_state_fixture_readiness": "blocked"
+  }
+}

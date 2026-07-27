@@ -28,8 +28,9 @@ printf 'RepoPrompt Portable GTK smoke\n' >"$workspace/sentinel.txt"
 swift build \
   --package-path "$desktop" \
   --product "$product" \
+  --disable-index-store \
   --disable-automatic-resolution
-bin_path="$(swift build --package-path "$desktop" --show-bin-path)"
+bin_path="$(swift build --package-path "$desktop" --disable-index-store --show-bin-path)"
 binary="$bin_path/$product"
 
 BINARY="$binary" \

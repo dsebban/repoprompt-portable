@@ -166,6 +166,7 @@ def verify_owned_imports() -> None:
     )
     roots = [
         ROOT / "RepoPromptCore",
+        ROOT / "RepoPromptCodeMap",
         ROOT / "RepoPromptHeadless",
         ROOT / "RepoPromptHeadlessServer",
         ROOT / "RepoPromptPortableCLI",
@@ -188,7 +189,14 @@ def verify_linux_binary() -> None:
         fail("compile/link verification requires Linux")
 
     bin_path = Path(
-        run("swift", "build", "--package-path", str(DESKTOP), "--show-bin-path").strip()
+        run(
+            "swift",
+            "build",
+            "--package-path",
+            str(DESKTOP),
+            "--disable-index-store",
+            "--show-bin-path",
+        ).strip()
     )
     run("swift", "package", "--package-path", str(DESKTOP), "clean")
     if any(bin_path.rglob("*.swiftmodule")):
@@ -201,6 +209,7 @@ def verify_linux_binary() -> None:
         str(DESKTOP),
         "--product",
         PRODUCT,
+        "--disable-index-store",
         "--disable-automatic-resolution",
     )
     checkout = DESKTOP / ".build" / "checkouts" / "swift-cross-ui"
@@ -244,4 +253,4 @@ if __name__ == "__main__":
     verify_manifests()
     verify_owned_imports()
     verify_linux_binary()
-    print("Linux desktop graph verified: isolated root, SwiftCrossUI 0.8.0, GTK 4 linkage, no Apple backend or missing library.")
+    print("Linux desktop graph verified: isolated root, Linux-safe codemap core, SwiftCrossUI 0.8.0, GTK 4 linkage, no Apple backend or missing library.")

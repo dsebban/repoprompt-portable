@@ -6,6 +6,8 @@
 
 Portable software version `0.3.0` exposes exactly seven tools: `bind_context`, `get_file_tree`, `read_file`, `manage_selection`, `file_search`, `context_builder`, and `oracle_send`.
 
+`file_search` performs bounded literal case-insensitive matching only. Regex mode is disabled until a deterministic bounded engine is available. It rejects patterns over 1024 UTF-8 bytes, validates result and context limits, securely reads only root-contained regular files, observes cancellation, and caps both each encoded preview and the aggregate encoded JSON response.
+
 Every tool's top-level input schema advertises capability version `1.1.0` with `x-repoprompt-portable-schema-version`. MCP initialize also reports software `0.3.0` and repeats the schema version in its instructions. Earlier unversioned builds are legacy and have no implied schema version.
 
 Contract versions use semantic versioning:
@@ -22,7 +24,9 @@ python3 Scripts/list_cursor_mcp_tools.py --expect-schema-version 1.1.0
 
 ## Explicit selection and context integrity
 
-`manage_selection` is the only selection mutation interface. `context_builder` renders the current explicit in-memory file/slice selection. It does not discover, add, remove, or expand source on the caller's behalf.
+`manage_selection` is the only selection mutation interface. It stores explicit full-file, described slice, and manual-codemap intent plus `codemap_auto_enabled`. `context_builder` renders that immutable snapshot into canonical `<file_map>` and `<file_contents>` sections. When automatic codemaps are enabled, rendering may derive dependency codemaps without adding them to or otherwise mutating explicit selection.
+
+`manage_selection` keeps its `full|slices|codemap_only` modes and adds only compatible schema `1.1.0` details: slice ranges may include an optional `description`, and mutating operations may include Boolean `codemap_auto_enabled`. Results retain `auto_codemap_paths` as the legacy alias for stored manual codemaps and add `manual_codemap_paths`, `slice_details`, and the current automatic flag. Context results disclose `automatic_codemap_paths`, resolved codemap source, entry kind, and effective slice ranges.
 
 ```text
 context_builder(instructions, response_type?, review_diff?, max_context_bytes?)
@@ -41,7 +45,7 @@ oracle_send(message, mode?, review_diff?, clarify_handoff?, max_context_bytes?)
 - `review_diff` has the same review-only contract as builder review.
 - `clarify_handoff` accepts up to 1048576 UTF-8 bytes of prior local clarify output in every mode.
 
-Provider-backed `context_builder` and every `oracle_send` call fail closed before HTTP when the render is incomplete. Any omitted selected root/file/slice, unsupported codemap expansion, unreadable/non-UTF-8 source, unsafe path, or byte-budget truncation produces the MCP tool error `incomplete_workspace_context` with bounded diagnostic details. Call local clarify, correct the selection or limit, then retry. Empty-but-complete selection remains valid and is represented explicitly.
+Provider-backed `context_builder` and every `oracle_send` call fail closed before HTTP when the render is incomplete. Any omitted selected file/slice/manual codemap, codemap parse/index failure, unreadable/non-UTF-8 source, unsafe path, or byte-budget truncation produces the MCP tool error `incomplete_workspace_context` with bounded diagnostic details. Call local clarify, correct the selection or limit, then retry. Empty-but-complete selection remains valid. Automatic codemap paths are derived context only, disclosed in output, and never become editable explicit selection.
 
 Selection is immutable for the in-flight pair. Later selection mutations cannot change either lane's prompt.
 
@@ -70,7 +74,9 @@ The requested envelope has exactly one concise self-closing `<chatName="..."/>`,
 
 If an existing required file was not selected, the artifact must name that missing context only in `<Plan>` and omit its file block; zero file blocks are valid. This differs from render omissions or truncation, which fail closed before either provider is called.
 
-Portable treats both lane responses as opaque strings. It neither parses nor validates the envelope, delegates work, applies or writes changes, persists artifacts, nor certifies conformance. Generated paths and content are untrusted. A downstream agent must defensively review each lane against the explicit selection and loaded roots, choose deliberately, and use its native tools to implement and test the change.
+The headless MCP catalog and direct JSONL CLI treat both lane responses as opaque strings. They neither parse nor validate the envelope, delegate work, apply or write changes, persist artifacts, nor certify conformance. Generated paths and content are untrusted. A downstream agent must defensively review each lane against the explicit selection and loaded roots, choose deliberately, and use its native tools to implement and test the change.
+
+The separately packaged native desktop has an explicit, user-driven Pro Edit preview/apply transaction. That desktop-only service is not a headless tool and cannot be reached through MCP or CLI; it does not broaden this document's read-only protocol contract.
 
 ## Untrusted-evidence boundary
 
@@ -264,4 +270,4 @@ Version tags, commit tags, digests, and GitHub release assets are immutable. `la
 
 ## Intentionally unsupported
 
-Portable does not provide `workspace_context`, `ask_oracle`, chat continuation/logs, model overrides in tool arguments, MCP-managed exports, automatic/synthesized Git diffs, images/screenshots, autonomous discovery, `agent_run`, writes or edit execution/application, UI/model settings, Agent Mode orchestration, or workspace/Oracle persistence. It does support caller-supplied `review_diff`, CLI-only `--export-jsonl`, and provider-backed builder `plan|review|pro_edit`; Pro Edit generates opaque instructions but does not execute them.
+The headless MCP/CLI products do not provide `workspace_context`, `ask_oracle`, chat continuation/logs, model overrides in tool arguments, MCP-managed exports, automatic/synthesized Git diffs, images/screenshots, autonomous discovery, `agent_run`, writes or edit execution/application, UI/model settings, Agent Mode orchestration, or workspace/Oracle persistence. They do support caller-supplied `review_diff`, CLI-only `--export-jsonl`, and provider-backed builder `plan|review|pro_edit`; headless Pro Edit generates opaque instructions but does not execute them.

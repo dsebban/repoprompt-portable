@@ -1,0 +1,131 @@
+{
+  "schema_version": 1,
+  "scenario_id": "classic-compose-builder-v1",
+  "workspace_leaf": "repoprompt-portable",
+  "window_title": "RepoPrompt Portable",
+  "expected_fixture_file_count": 24,
+  "expected_indexed_file_count": 22,
+  "appearance": "dark",
+  "capture_geometry": {
+    "outer_window_points": [1504, 949],
+    "candidate_raw_pixels": [3008, 1898],
+    "target_raw_pixels": [3008, 1920],
+    "host_constraint": "The standard AppKit window is clamped to the 949-point visible height of the selected 2x display; both sources use the same normalized aspect-fill contract."
+  },
+  "files": [
+    {
+      "path": ".agents/skills/ui-review/SKILL.md",
+      "content": "# UI Review\n\nCompare each measured region against the frozen Classic target.\n"
+    },
+    {
+      "path": ".github/workflows/ci.yml",
+      "content": "name: CI\non: [push]\njobs:\n  test:\n    runs-on: ubuntu-latest\n    steps: []\n"
+    },
+    {
+      "path": "AGENTS.md",
+      "content": "# Workspace Instructions\n\nKeep changes small, measured, and verified.\n"
+    },
+    {
+      "path": "AppBundle/Info.plist",
+      "content": "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<plist version=\"1.0\"><dict/></plist>\n"
+    },
+    {
+      "path": "AppResources/theme.json",
+      "content": "{\"appearance\":\"dark\",\"accent\":\"blue\"}\n"
+    },
+    {
+      "path": "docs/architecture/desktop.md",
+      "content": "# Desktop Architecture\n\nThe desktop owns presentation and explicit user actions.\n"
+    },
+    {
+      "path": "docs/architecture/oracle.md",
+      "content": "# Oracle\n\nPrimary and Secondary lanes remain independently attributed.\n"
+    },
+    {
+      "path": "Packages/Workspace/Package.swift",
+      "content": "// swift-tools-version: 6.1\nimport PackageDescription\nlet package = Package(name: \"Workspace\")\n"
+    },
+    {
+      "path": "Scripts/build.sh",
+      "content": "#!/usr/bin/env bash\nset -euo pipefail\nswift build\n"
+    },
+    {
+      "path": "Scripts/test.sh",
+      "content": "#!/usr/bin/env bash\nset -euo pipefail\nswift test\n"
+    },
+    {
+      "path": "Sources/App/App.swift",
+      "content": "import Foundation\n\nstruct AppModel {\n    let name = \"RepoPrompt Portable\"\n}\n"
+    },
+    {
+      "path": "Sources/App/ContentView.swift",
+      "content": "import Foundation\n\nstruct ContentView {\n    let title: String\n}\n"
+    },
+    {
+      "path": "Sources/App/InstructionsView.swift",
+      "content": "import Foundation\n\nstruct InstructionsView {\n    var text: String\n}\n"
+    },
+    {
+      "path": "Sources/App/PresetBottomBar.swift",
+      "content": "import Foundation\n\nstruct PresetBottomBar {\n    let tokenCount: Int\n}\n"
+    },
+    {
+      "path": "Sources/ContextBuilder/ContextBuilder.swift",
+      "content": "import Foundation\n\nstruct ContextBuilder {\n    func build() -> String { \"context\" }\n}\n"
+    },
+    {
+      "path": "Sources/ContextBuilder/Selection.swift",
+      "content": "import Foundation\n\nstruct Selection {\n    var files: [String]\n}\n"
+    },
+    {
+      "path": "Sources/Oracle/OracleLane.swift",
+      "content": "import Foundation\n\nenum OracleLane { case primary, secondary }\n"
+    },
+    {
+      "path": "Sources/Oracle/OracleResult.swift",
+      "content": "import Foundation\n\nstruct OracleResult {\n    let content: String\n}\n"
+    },
+    {
+      "path": "Tests/AppTests/ContentViewTests.swift",
+      "content": "import Testing\n\n@Test func contentView() { #expect(true) }\n"
+    },
+    {
+      "path": "Tests/ContextBuilderTests/ContextBuilderTests.swift",
+      "content": "import Testing\n\n@Test func contextBuilder() { #expect(true) }\n"
+    },
+    {
+      "path": "ThirdPartyLicenses/SwiftCrossUI.txt",
+      "content": "SwiftCrossUI license fixture.\n"
+    },
+    {
+      "path": "Vendor/README.md",
+      "content": "# Vendor\n\nNo vendored runtime dependencies in this fixture.\n"
+    },
+    {
+      "path": "README.md",
+      "content": "# RepoPrompt Portable\n\nDeterministic visual-parity fixture.\n"
+    },
+    {
+      "path": "Package.swift",
+      "content": "// swift-tools-version: 6.1\nimport PackageDescription\nlet package = Package(name: \"ParityFixture\")\n"
+    }
+  ],
+  "ax_actions": [
+    {
+      "action": "press",
+      "selector": {
+        "role": "AXButton",
+        "title": "● Context Builder"
+      }
+    }
+  ],
+  "focus_selector": {
+    "role": "AXButton",
+    "title": "● Context Builder"
+  },
+  "scroll_positions": {
+    "sidebar": 0,
+    "instructions": 0,
+    "builder": 0
+  }
+}
