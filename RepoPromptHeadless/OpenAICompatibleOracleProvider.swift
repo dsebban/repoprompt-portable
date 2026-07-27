@@ -195,43 +195,38 @@ actor OpenAICompatibleOracleProvider: HeadlessOracleProvider {
 
 	private let configuration: HeadlessOracleConfiguration
 	private let session: URLSession
-	private let redirectDelegate: HeadlessRejectRedirectsDelegate?
+	private let responseDelegate: HeadlessBoundedResponseDelegate
 
 	init(configuration: HeadlessOracleConfiguration, session: URLSession? = nil) {
 		self.configuration = configuration
+		let delegate = HeadlessBoundedResponseDelegate()
+		let sessionConfiguration: URLSessionConfiguration
 		if let session {
-			self.session = session
-			redirectDelegate = nil
+			sessionConfiguration = session.configuration
 		} else {
-			let delegate = HeadlessRejectRedirectsDelegate()
-			let sessionConfiguration = URLSessionConfiguration.ephemeral
+			sessionConfiguration = .ephemeral
 			sessionConfiguration.timeoutIntervalForRequest = TimeInterval(configuration.timeoutSeconds)
 			sessionConfiguration.timeoutIntervalForResource = TimeInterval(configuration.timeoutSeconds)
-			self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
-			redirectDelegate = delegate
 		}
+		self.session = URLSession(configuration: sessionConfiguration, delegate: delegate, delegateQueue: nil)
+		responseDelegate = delegate
 	}
 
 	func complete(_ request: HeadlessOracleProviderRequest) async throws -> HeadlessOracleProviderCompletion {
 		let started = DispatchTime.now().uptimeNanoseconds
 		do {
 			let urlRequest = try Self.makeURLRequest(request, configuration: configuration)
-			let (data, response) = try await session.data(for: urlRequest)
+			let (data, response) = try await responseDelegate.data(
+				for: urlRequest,
+				using: session,
+				maximumBytes: Self.maximumResponseBytes
+			)
 			let latencyMilliseconds = Self.elapsedMilliseconds(since: started)
 			guard let httpResponse = response as? HTTPURLResponse else {
 				throw HeadlessOracleProviderFailure(
 					.invalidResponse,
 					message: "Provider returned a non-HTTP response.",
 					latencyMilliseconds: latencyMilliseconds
-				)
-			}
-			if httpResponse.expectedContentLength > Self.maximumResponseBytes {
-				throw HeadlessOracleProviderFailure(
-					.invalidResponse,
-					message: "Oracle provider response exceeded 2 MiB.",
-					httpStatus: httpResponse.statusCode,
-					latencyMilliseconds: latencyMilliseconds,
-					requestID: Self.boundedRedacted(Self.requestID(from: httpResponse), token: configuration.bearerToken)
 				)
 			}
 			return try Self.decodeResponse(
@@ -241,6 +236,18 @@ actor OpenAICompatibleOracleProvider: HeadlessOracleProvider {
 				requestID: Self.requestID(from: httpResponse),
 				retryAfterSeconds: Self.retryAfterSeconds(from: httpResponse),
 				latencyMilliseconds: latencyMilliseconds
+			)
+		} catch let failure as HeadlessResponseCollectionFailure {
+			let response = failure.response
+			throw HeadlessOracleProviderFailure(
+				.invalidResponse,
+				message: "Oracle provider response exceeded 2 MiB.",
+				httpStatus: response?.statusCode,
+				latencyMilliseconds: Self.elapsedMilliseconds(since: started),
+				requestID: Self.boundedRedacted(
+					response.flatMap(Self.requestID(from:)),
+					token: configuration.bearerToken
+				)
 			)
 		} catch is CancellationError {
 			throw CancellationError()
@@ -508,7 +515,111 @@ actor OpenAICompatibleOracleProvider: HeadlessOracleProvider {
 	}
 }
 
-private final class HeadlessRejectRedirectsDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+private struct HeadlessResponseCollectionFailure: Error {
+	let response: HTTPURLResponse?
+}
+
+private final class HeadlessBoundedResponseDelegate: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+	private struct State {
+		let continuation: CheckedContinuation<(Data, URLResponse), Error>
+		let maximumBytes: Int
+		var data = Data()
+		var response: URLResponse?
+		var exceededLimit = false
+	}
+
+	private let lock = NSLock()
+	private var states: [Int: State] = [:]
+
+	func data(
+		for request: URLRequest,
+		using session: URLSession,
+		maximumBytes: Int
+	) async throws -> (Data, URLResponse) {
+		let taskBox = HeadlessURLSessionTaskBox()
+		return try await withTaskCancellationHandler {
+			try await withCheckedThrowingContinuation { continuation in
+				let task = session.dataTask(with: request)
+				lock.lock()
+				states[task.taskIdentifier] = State(
+					continuation: continuation,
+					maximumBytes: maximumBytes
+				)
+				lock.unlock()
+				taskBox.install(task)
+				task.resume()
+			}
+		} onCancel: {
+			taskBox.cancel()
+		}
+	}
+
+	func urlSession(
+		_ session: URLSession,
+		dataTask: URLSessionDataTask,
+		didReceive response: URLResponse,
+		completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+	) {
+		var shouldCancel = false
+		lock.lock()
+		if var state = states[dataTask.taskIdentifier] {
+			state.response = response
+			if response.expectedContentLength > Int64(state.maximumBytes) {
+				state.exceededLimit = true
+				shouldCancel = true
+			} else if response.expectedContentLength > 0 {
+				state.data.reserveCapacity(Int(response.expectedContentLength))
+			}
+			states[dataTask.taskIdentifier] = state
+		}
+		lock.unlock()
+		completionHandler(shouldCancel ? .cancel : .allow)
+	}
+
+	func urlSession(
+		_ session: URLSession,
+		dataTask: URLSessionDataTask,
+		didReceive data: Data
+	) {
+		var shouldCancel = false
+		lock.lock()
+		if var state = states[dataTask.taskIdentifier], !state.exceededLimit {
+			if data.count > state.maximumBytes - state.data.count {
+				state.exceededLimit = true
+				shouldCancel = true
+			} else {
+				state.data.append(data)
+			}
+			states[dataTask.taskIdentifier] = state
+		}
+		lock.unlock()
+		if shouldCancel {
+			dataTask.cancel()
+		}
+	}
+
+	func urlSession(
+		_ session: URLSession,
+		task: URLSessionTask,
+		didCompleteWithError error: Error?
+	) {
+		lock.lock()
+		let state = states.removeValue(forKey: task.taskIdentifier)
+		lock.unlock()
+		guard let state else { return }
+		if state.exceededLimit {
+			state.continuation.resume(throwing: HeadlessResponseCollectionFailure(
+				response: state.response as? HTTPURLResponse
+			))
+		} else if let error {
+			state.continuation.resume(throwing: error)
+		} else if let response = state.response {
+			state.continuation.resume(returning: (state.data, response))
+		} else {
+			state.continuation.resume(throwing: URLError(.badServerResponse))
+		}
+	}
+
 	func urlSession(
 		_ session: URLSession,
 		task: URLSessionTask,
@@ -517,5 +628,29 @@ private final class HeadlessRejectRedirectsDelegate: NSObject, URLSessionTaskDel
 		completionHandler: @escaping (URLRequest?) -> Void
 	) {
 		completionHandler(nil)
+	}
+}
+
+private final class HeadlessURLSessionTaskBox: @unchecked Sendable {
+	private let lock = NSLock()
+	private var task: URLSessionTask?
+	private var cancelled = false
+
+	func install(_ task: URLSessionTask) {
+		lock.lock()
+		self.task = task
+		let shouldCancel = cancelled
+		lock.unlock()
+		if shouldCancel {
+			task.cancel()
+		}
+	}
+
+	func cancel() {
+		lock.lock()
+		cancelled = true
+		let task = task
+		lock.unlock()
+		task?.cancel()
 	}
 }

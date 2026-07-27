@@ -13,6 +13,7 @@ package struct WorkspaceSliceEntry: Equatable, Sendable {
 package enum WorkspaceSelectionMutation: Equatable, Sendable {
 	case replaceWithFullFiles([String])
 	case addFullFiles([String])
+	case replaceWithSlices([WorkspaceSliceEntry])
 	case setSlices([WorkspaceSliceEntry])
 	case addSlices([WorkspaceSliceEntry])
 	case subtractSlices([WorkspaceSliceEntry])
@@ -30,6 +31,7 @@ package enum WorkspaceSelectionLimitViolation: Error, Equatable, Sendable {
 	case tooManyPaths
 	case sliceRangeCountOutOfRange
 	case totalSliceRangesExceeded
+	case invalidSliceDescription
 }
 
 package enum WorkspaceSelectionReducer {
@@ -53,6 +55,12 @@ package enum WorkspaceSelectionReducer {
 			appendUnique(paths, to: &selection.selectedPaths)
 			let added = Set(paths)
 			selection.manualCodemapPaths.removeAll { added.contains($0) }
+			for path in added { selection.slices.removeValue(forKey: path) }
+		case .replaceWithSlices(let entries):
+			selection.selectedPaths = []
+			selection.slices = [:]
+			selection.manualCodemapPaths = []
+			try applySlices(entries, to: &selection, coalescing: false)
 		case .setSlices(let entries):
 			try applySlices(entries, to: &selection, coalescing: false)
 		case .addSlices(let entries):
@@ -61,9 +69,11 @@ package enum WorkspaceSelectionReducer {
 			for entry in entries {
 				guard let existing = selection.slices[entry.path] else { continue }
 				let removal = SliceRangeMath.normalize(entry.ranges)
-				let remaining = removal.isEmpty ? [] : SliceRangeMath.subtract(existing, removing: removal)
+				guard !removal.isEmpty else { continue }
+				let remaining = SliceRangeMath.subtract(existing, removing: removal)
 				if remaining.isEmpty {
 					selection.slices.removeValue(forKey: entry.path)
+					selection.selectedPaths.removeAll { $0 == entry.path }
 				} else {
 					selection.slices[entry.path] = remaining
 				}
@@ -116,6 +126,12 @@ package enum WorkspaceSelectionReducer {
 		guard selection.slices.values.reduce(0, { $0 + $1.count }) <= maximumTotalRanges else {
 			throw WorkspaceSelectionLimitViolation.totalSliceRangesExceeded
 		}
+		guard selection.slices.values.joined().allSatisfy({ range in
+			guard let description = range.description else { return true }
+			return !description.contains("\0") && description.utf8.count <= 1_024
+		}) else {
+			throw WorkspaceSelectionLimitViolation.invalidSliceDescription
+		}
 	}
 
 	private static func applySlices(
@@ -145,16 +161,22 @@ package enum WorkspaceSelectionReducer {
 		selection.selectedPaths = orderedUnique(selection.selectedPaths)
 		selection.manualCodemapPaths = orderedUnique(selection.manualCodemapPaths)
 
-		var slices: [String: [LineRange]] = [:]
-		for (path, ranges) in selection.slices {
-			let normalized = SliceRangeMath.normalize(ranges)
-			if !normalized.isEmpty { slices[path] = normalized }
-		}
-		selection.slices = slices
-		appendUnique(slices.keys.sorted(), to: &selection.selectedPaths)
-
 		let selected = Set(selection.selectedPaths)
-		selection.manualCodemapPaths.removeAll { selected.contains($0) }
+		var invalidSlicePaths = Set<String>()
+		var slices: [String: [LineRange]] = [:]
+		for (path, ranges) in selection.slices where selected.contains(path) {
+			let normalized = SliceRangeMath.normalize(ranges)
+			if normalized.isEmpty || normalized.contains(where: { $0.start < 1 }) {
+				invalidSlicePaths.insert(path)
+			} else {
+				slices[path] = normalized
+			}
+		}
+		selection.selectedPaths.removeAll { invalidSlicePaths.contains($0) }
+		selection.slices = slices
+
+		let remainingSelected = Set(selection.selectedPaths)
+		selection.manualCodemapPaths.removeAll { remainingSelected.contains($0) }
 	}
 
 	private static func orderedUnique(_ paths: [String]) -> [String] {

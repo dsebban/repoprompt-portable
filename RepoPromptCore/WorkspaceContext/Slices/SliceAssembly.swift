@@ -6,12 +6,21 @@ package struct WorkspaceSliceSegment: Equatable, Sendable {
 }
 
 package struct WorkspaceSliceAssembly: Equatable, Sendable {
+	package enum Kind: Equatable, Sendable {
+		case fullFile
+		case sliced
+		case invalidSlice
+	}
+
 	package let segments: [WorkspaceSliceSegment]
 	package let combinedText: String
 	package let totalLines: Int
 	package let detectedLineEnding: String
 	package let usedRanges: [LineRange]
-	package let isFullFile: Bool
+	package let kind: Kind
+
+	package var isFullFile: Bool { kind == .fullFile }
+	package var isInvalidSlice: Bool { kind == .invalidSlice }
 }
 
 package enum WorkspaceSliceAssemblyBuilder {
@@ -34,13 +43,24 @@ package enum WorkspaceSliceAssemblyBuilder {
 				totalLines: totalLines,
 				detectedLineEnding: detectedEnding,
 				usedRanges: [],
-				isFullFile: true
+				kind: .fullFile
+			)
+		}
+
+		func invalidSliceAssembly() -> WorkspaceSliceAssembly {
+			WorkspaceSliceAssembly(
+				segments: [],
+				combinedText: "",
+				totalLines: totalLines,
+				detectedLineEnding: detectedEnding,
+				usedRanges: [],
+				kind: .invalidSlice
 			)
 		}
 
 		guard let ranges, !ranges.isEmpty else { return fullFileAssembly() }
 		let normalized = normalize(ranges, maximumLine: totalLines)
-		guard !normalized.isEmpty else { return fullFileAssembly() }
+		guard !normalized.isEmpty else { return invalidSliceAssembly() }
 
 		var segments: [WorkspaceSliceSegment] = []
 		var combined = ""
@@ -54,14 +74,14 @@ package enum WorkspaceSliceAssemblyBuilder {
 			combined += text
 		}
 
-		guard !segments.isEmpty else { return fullFileAssembly() }
+		guard !segments.isEmpty else { return invalidSliceAssembly() }
 		return WorkspaceSliceAssembly(
 			segments: segments,
 			combinedText: combined,
 			totalLines: totalLines,
 			detectedLineEnding: detectedEnding,
 			usedRanges: segments.map(\.range),
-			isFullFile: false
+			kind: .sliced
 		)
 	}
 

@@ -1,15 +1,54 @@
 import Foundation
+import RepoPromptCodeMap
 import RepoPromptCore
 
 struct HeadlessWorkspaceContext: Equatable, Sendable {
+	struct SourceEvidence: Equatable, Sendable {
+		enum Role: String, Equatable, Sendable {
+			case full
+			case slice
+		}
+
+		let canonicalPath: String
+		let role: Role
+		let deviceID: UInt64
+		let fileID: UInt64
+		let byteCount: Int
+		let sha256: String
+
+		init(file: HeadlessSecureFile, role: Role) {
+			canonicalPath = file.canonicalPath
+			self.role = role
+			deviceID = file.deviceID
+			fileID = file.fileID
+			byteCount = file.byteCount
+			sha256 = file.sha256
+		}
+
+		func matches(_ file: HeadlessSecureFile) -> Bool {
+			canonicalPath == file.canonicalPath
+				&& deviceID == file.deviceID
+				&& fileID == file.fileID
+				&& byteCount == file.byteCount
+				&& sha256 == file.sha256
+		}
+	}
+
 	struct Entry: Equatable, Sendable {
 		enum Kind: String, Sendable {
 			case selectedFull = "selected_full"
 			case selectedSlice = "selected_slice"
+			case selectedCodemap = "selected_codemap"
+		}
+
+		enum CodemapSource: String, Sendable {
+			case manual
+			case automatic
 		}
 
 		let path: String
 		let kind: Kind
+		let codemapSource: CodemapSource?
 		let startLine: Int?
 		let endLine: Int?
 		let byteCount: Int
@@ -29,6 +68,10 @@ struct HeadlessWorkspaceContext: Equatable, Sendable {
 			case orphanSlice = "orphan_slice"
 			case invalidSlice = "invalid_slice"
 			case autoCodemapUnsupported = "auto_codemap_unsupported"
+			case codemapLanguageUnsupported = "codemap_language_unsupported"
+			case codemapNoSymbols = "codemap_no_symbols"
+			case codemapParseFailed = "codemap_parse_failed"
+			case codemapIndexLimitExceeded = "codemap_index_limit_exceeded"
 		}
 
 		let path: String
@@ -38,7 +81,9 @@ struct HeadlessWorkspaceContext: Equatable, Sendable {
 	let roots: [String]
 	let selection: WorkspaceSelectionSnapshot
 	let entries: [Entry]
+	let sourceEvidence: [SourceEvidence]
 	let omissions: [Omission]
+	let automaticCodemapPaths: [String]
 	let content: String
 	let maximumByteCount: Int
 	let truncated: Bool
@@ -54,6 +99,8 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 	static let absoluteMaximumBytes = 1_048_576
 	static let maximumSourceFileBytes = 8_388_608
 	static let maximumAggregateSourceBytes = 64 * 1_024 * 1_024
+	static let maximumCodemapCandidates = 4_096
+	static let maximumAutomaticCodemaps = 1_024
 	static let maximumSelectionEntries = WorkspaceSelectionReducer.maximumSelectionEntries
 	static let maximumRangesPerFile = WorkspaceSelectionReducer.maximumRangesPerFile
 	static let maximumTotalRanges = WorkspaceSelectionReducer.maximumTotalRanges
@@ -64,30 +111,116 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 		resolver = HeadlessWorkspacePathResolver(roots: roots)
 	}
 
+	static func automaticCodemapOmissionReason(
+		for outcome: CodeMapSyntaxArtifactOutcome
+	) -> HeadlessWorkspaceContext.Omission.Reason? {
+		switch outcome {
+		case .oversize: .sourceTooLarge
+		case .decodeFailed: .invalidUTF8
+		case .parseFailed: .codemapParseFailed
+		case .ready, .readyNoSymbols: nil
+		}
+	}
+
 	func build(selection: WorkspaceSelectionSnapshot, maximumBytes: Int) -> HeadlessWorkspaceContext {
 		let limit = max(0, maximumBytes)
 		var contentBlocks: [String] = []
+		var codemapBlocks: [String] = []
 		var entries: [HeadlessWorkspaceContext.Entry] = []
+		var sourceEvidence: [HeadlessWorkspaceContext.SourceEvidence] = []
 		var omissions: [HeadlessWorkspaceContext.Omission] = []
+		var automaticCodemapPaths: [String] = []
 		var truncated = false
 		var sourceBytesRead = 0
+		var artifacts: [String: CodeMapSyntaxArtifact] = [:]
+		var acceptedExplicitPaths = Set<String>()
+
+		func acceptExplicitPath(_ path: String) -> Bool {
+			if acceptedExplicitPaths.contains(path) { return true }
+			guard acceptedExplicitPaths.count < Self.maximumSelectionEntries else {
+				truncated = true
+				return false
+			}
+			acceptedExplicitPaths.insert(path)
+			return true
+		}
+
+		func packaged(_ map: [String] = codemapBlocks, _ contents: [String] = contentBlocks) -> String {
+			CanonicalPromptPackaging.package(fileMapBlocks: map, fileContentBlocks: contents)
+		}
 
 		func appendContentBlock(_ block: String) -> Bool {
-			let candidate = CanonicalPromptPackaging.package(
-				fileContentBlocks: contentBlocks + [block]
-			)
-			guard candidate.utf8.count <= limit else { return false }
+			guard packaged(codemapBlocks, contentBlocks + [block]).utf8.count <= limit else { return false }
 			contentBlocks.append(block)
 			return true
 		}
 
+		func appendCodemapBlock(
+			_ block: String,
+			displayPath: String,
+			source: HeadlessWorkspaceContext.Entry.CodemapSource
+		) -> Bool {
+			guard packaged(codemapBlocks + [block], contentBlocks).utf8.count <= limit else { return false }
+			codemapBlocks.append(block)
+			entries.append(.init(
+				path: displayPath,
+				kind: .selectedCodemap,
+				codemapSource: source,
+				startLine: nil,
+				endLine: nil,
+				byteCount: block.utf8.count
+			))
+			if source == .automatic { automaticCodemapPaths.append(displayPath) }
+			return true
+		}
+
+		func loadSource(
+			_ location: HeadlessWorkspacePathResolver.Location,
+			contextBudget: Int? = nil
+		) throws -> (source: String, file: HeadlessSecureFile) {
+			let aggregateRemaining = max(0, Self.maximumAggregateSourceBytes - sourceBytesRead)
+			guard aggregateRemaining > 0 else { throw HeadlessContextSourceError.aggregateLimit }
+			if let contextBudget, contextBudget <= 0 { throw HeadlessContextSourceError.contextBudget }
+			let readLimit = min(
+				Self.maximumSourceFileBytes,
+				aggregateRemaining,
+				contextBudget ?? Self.maximumSourceFileBytes
+			)
+			let file: HeadlessSecureFile
+			do {
+				file = try resolver.read(at: location.realPath, maximumBytes: readLimit)
+			} catch HeadlessSecureFileError.tooLarge(let byteCount) {
+				if byteCount <= Self.maximumSourceFileBytes, byteCount > aggregateRemaining {
+					throw HeadlessContextSourceError.aggregateLimit
+				}
+				if let contextBudget, byteCount <= Self.maximumSourceFileBytes, byteCount > contextBudget {
+					throw HeadlessContextSourceError.contextBudget
+				}
+				throw HeadlessSecureFileError.tooLarge(byteCount)
+			}
+			sourceBytesRead += file.data.count
+			guard let source = String(data: file.data, encoding: .utf8) else {
+				throw HeadlessContextSourceError.invalidUTF8
+			}
+			return (source, file)
+		}
+
+		func makeArtifact(source: String, path: String) -> CodeMapSyntaxArtifactOutcome? {
+			do { return try PortableCodeMap.artifact(source: source, path: path) }
+			catch { return .parseFailed(.parserReturnedNilTree) }
+		}
+
 		var sliceMap: [String: [LineRange]] = [:]
-		let sliceIntentPaths = Set(selection.slices.keys.compactMap { try? resolver.lexicalPath($0) })
+		var sliceIntentPaths = Set<String>()
+		let sliceIntentOverflow = selection.slices.count > Self.maximumSelectionEntries
 		var invalidSliceKeys: [HeadlessWorkspaceContext.Omission] = []
 		var acceptedRangeCount = 0
-		for (rawPath, ranges) in selection.slices.prefix(Self.maximumSelectionEntries) {
+		for rawPath in selection.slices.keys.sorted().prefix(Self.maximumSelectionEntries) {
+			let ranges = selection.slices[rawPath] ?? []
 			do {
 				let path = try resolver.lexicalPath(rawPath)
+				sliceIntentPaths.insert(path)
+				guard acceptExplicitPath(path) else { continue }
 				let available = max(0, Self.maximumTotalRanges - acceptedRangeCount)
 				let accepted = Array(ranges.prefix(min(Self.maximumRangesPerFile, available)))
 				sliceMap[path, default: []].append(contentsOf: accepted)
@@ -109,9 +242,16 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 		for rawPath in selection.selectedPaths.prefix(Self.maximumSelectionEntries) {
 			do {
 				let path = try resolver.lexicalPath(rawPath)
+				guard acceptExplicitPath(path) else {
+					omissions.append(.init(
+						path: resolver.displayPath(path),
+						reason: sliceIntentOverflow ? .invalidSlice : .budgetExceeded
+					))
+					continue
+				}
 				if selectedSet.insert(path).inserted { selectedPaths.append(path) }
 			} catch {
-				omissions.append(.init(path: rawPath, reason: .outsideWorkspace))
+				omissions.append(.init(path: "[outside workspace]", reason: .outsideWorkspace))
 			}
 		}
 		if selection.selectedPaths.count > Self.maximumSelectionEntries { truncated = true }
@@ -130,43 +270,36 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 				}
 
 				let hasSliceEntry = sliceIntentPaths.contains(path)
+				if sliceIntentOverflow, !hasSliceEntry {
+					omissions.append(.init(path: location.displayPath, reason: .invalidSlice))
+					continue
+				}
 				let ranges = sliceMap[path] ?? []
 				if hasSliceEntry, ranges.isEmpty {
 					omissions.append(.init(path: location.displayPath, reason: .invalidSlice))
 					continue
 				}
-
-				let remainingAggregateBytes = max(0, Self.maximumAggregateSourceBytes - sourceBytesRead)
-				guard remainingAggregateBytes > 0 else {
-					omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
-					truncated = true
-					continue
-				}
-				let readLimit = ranges.isEmpty
-					? min(min(Self.maximumSourceFileBytes, remainingAggregateBytes), limit)
-					: min(Self.maximumSourceFileBytes, remainingAggregateBytes)
-				let data: Data
-				do {
-					data = try resolver.read(at: location.realPath, maximumBytes: readLimit).data
-				} catch HeadlessSecureFileError.tooLarge(let byteCount) {
-					let reason: HeadlessWorkspaceContext.Omission.Reason = byteCount > Self.maximumSourceFileBytes
-						? .sourceTooLarge
-						: .budgetExceeded
-					omissions.append(.init(path: location.displayPath, reason: reason))
-					truncated = truncated || reason == .budgetExceeded
-					continue
-				}
-				sourceBytesRead += data.count
-				guard let source = String(data: data, encoding: .utf8) else {
-					omissions.append(.init(path: location.displayPath, reason: .invalidUTF8))
-					continue
+				let remainingContextBudget = max(0, limit - packaged().utf8.count)
+				let loaded = try loadSource(
+					location,
+					contextBudget: ranges.isEmpty ? remainingContextBudget : nil
+				)
+				if selection.codemapAutoEnabled,
+					PortableCodeMap.supports(path: path),
+					let outcome = makeArtifact(source: loaded.source, path: path)
+				{
+					if case .ready(let artifact) = outcome {
+						artifacts[path] = artifact
+					} else if let reason = Self.automaticCodemapOmissionReason(for: outcome) {
+						omissions.append(.init(path: location.displayPath, reason: reason))
+					}
 				}
 
 				if ranges.isEmpty {
 					let block = CanonicalPromptPackaging.fullFileBlock(
 						displayPath: location.displayPath,
 						fileName: location.relativePath,
-						content: source
+						content: loaded.source
 					)
 					guard appendContentBlock(block) else {
 						omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
@@ -176,29 +309,25 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 					entries.append(.init(
 						path: location.displayPath,
 						kind: .selectedFull,
+						codemapSource: nil,
 						startLine: nil,
 						endLine: nil,
-						byteCount: source.utf8.count
+						byteCount: loaded.source.utf8.count
 					))
+					sourceEvidence.append(.init(file: loaded.file, role: .full))
 					continue
 				}
 
 				let invalidRanges = ranges.filter { $0.start < 1 || $0.end < $0.start }
 				for range in invalidRanges {
-					omissions.append(.init(
-						path: "\(location.displayPath):\(range.start)-\(range.end)",
-						reason: .invalidSlice
-					))
+					omissions.append(.init(path: "\(location.displayPath):\(range.start)-\(range.end)", reason: .invalidSlice))
 				}
 				let validRanges = ranges.filter { $0.start >= 1 && $0.end >= $0.start }
-				let assembly = WorkspaceSliceAssemblyBuilder.build(from: source, ranges: validRanges)
+				let assembly = WorkspaceSliceAssemblyBuilder.build(from: loaded.source, ranges: validRanges)
 				for range in validRanges where range.start > assembly.totalLines {
-					omissions.append(.init(
-						path: "\(location.displayPath):\(range.start)-\(range.end)",
-						reason: .sliceOutOfBounds
-					))
+					omissions.append(.init(path: "\(location.displayPath):\(range.start)-\(range.end)", reason: .sliceOutOfBounds))
 				}
-				guard !assembly.isFullFile else {
+				guard !assembly.isInvalidSlice, !assembly.isFullFile else {
 					if invalidRanges.isEmpty, !validRanges.contains(where: { $0.start > assembly.totalLines }) {
 						omissions.append(.init(path: location.displayPath, reason: .invalidSlice))
 					}
@@ -218,13 +347,24 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 					.init(
 						path: location.displayPath,
 						kind: .selectedSlice,
+						codemapSource: nil,
 						startLine: segment.range.start,
 						endLine: segment.range.end,
 						byteCount: segment.text.utf8.count
 					)
 				})
+				sourceEvidence.append(.init(file: loaded.file, role: .slice))
 			} catch let error as HeadlessWorkspacePathError {
 				omissions.append(.init(path: resolver.displayPath(path), reason: error.omissionReason))
+			} catch HeadlessContextSourceError.invalidUTF8 {
+				omissions.append(.init(path: resolver.displayPath(path), reason: .invalidUTF8))
+			} catch HeadlessContextSourceError.aggregateLimit,
+				HeadlessContextSourceError.contextBudget
+			{
+				omissions.append(.init(path: resolver.displayPath(path), reason: .budgetExceeded))
+				truncated = true
+			} catch HeadlessSecureFileError.tooLarge {
+				omissions.append(.init(path: resolver.displayPath(path), reason: .sourceTooLarge))
 			} catch {
 				omissions.append(.init(path: resolver.displayPath(path), reason: .readFailed))
 			}
@@ -235,25 +375,141 @@ struct HeadlessWorkspaceContextBuilder: Sendable {
 		}
 		omissions.append(contentsOf: invalidSliceKeys)
 
-		var seenManualCodemaps = Set<String>()
-		for rawPath in selection.manualCodemapPaths {
-			let path = (try? resolver.lexicalPath(rawPath)) ?? rawPath
-			guard !selectedSet.contains(path), seenManualCodemaps.insert(path).inserted else { continue }
-			omissions.append(.init(path: resolver.displayPath(path), reason: .autoCodemapUnsupported))
+		var manualPaths: [String] = []
+		var manualSet = Set<String>()
+		for rawPath in selection.manualCodemapPaths.prefix(Self.maximumSelectionEntries) {
+			do {
+				let path = try resolver.lexicalPath(rawPath)
+				guard acceptExplicitPath(path),
+					!selectedSet.contains(path),
+					manualSet.insert(path).inserted
+				else { continue }
+				manualPaths.append(path)
+			} catch {
+				omissions.append(.init(path: "[outside workspace]", reason: .outsideWorkspace))
+			}
+		}
+		if selection.manualCodemapPaths.count > Self.maximumSelectionEntries { truncated = true }
+
+		for path in manualPaths {
+			do {
+				let location = try resolver.location(for: path)
+				guard PortableCodeMap.supports(path: path) else {
+					omissions.append(.init(path: location.displayPath, reason: .codemapLanguageUnsupported))
+					continue
+				}
+				let source = try loadSource(location).source
+				guard let outcome = makeArtifact(source: source, path: path) else {
+					omissions.append(.init(path: location.displayPath, reason: .codemapLanguageUnsupported))
+					continue
+				}
+				switch outcome {
+				case .ready(let artifact):
+					artifacts[path] = artifact
+					let block = PortableCodeMap.render(artifact, displayPath: location.displayPath)
+					guard appendCodemapBlock(block, displayPath: location.displayPath, source: .manual) else {
+						omissions.append(.init(path: location.displayPath, reason: .budgetExceeded))
+						truncated = true
+						continue
+					}
+				case .readyNoSymbols:
+					omissions.append(.init(path: location.displayPath, reason: .codemapNoSymbols))
+				case .oversize:
+					omissions.append(.init(path: location.displayPath, reason: .sourceTooLarge))
+				case .decodeFailed:
+					omissions.append(.init(path: location.displayPath, reason: .invalidUTF8))
+				case .parseFailed:
+					omissions.append(.init(path: location.displayPath, reason: .codemapParseFailed))
+				}
+			} catch let error as HeadlessWorkspacePathError {
+				omissions.append(.init(path: resolver.displayPath(path), reason: error.omissionReason))
+			} catch HeadlessContextSourceError.invalidUTF8 {
+				omissions.append(.init(path: resolver.displayPath(path), reason: .invalidUTF8))
+			} catch HeadlessContextSourceError.aggregateLimit,
+				HeadlessContextSourceError.contextBudget
+			{
+				omissions.append(.init(path: resolver.displayPath(path), reason: .budgetExceeded))
+				truncated = true
+			} catch HeadlessSecureFileError.tooLarge {
+				omissions.append(.init(path: resolver.displayPath(path), reason: .sourceTooLarge))
+			} catch {
+				omissions.append(.init(path: resolver.displayPath(path), reason: .codemapParseFailed))
+			}
 		}
 
-		let content = CanonicalPromptPackaging.package(fileContentBlocks: contentBlocks)
+		let selectedReferences = Set(selectedPaths.flatMap { artifacts[$0]?.referencedTypes ?? [] })
+		if selection.codemapAutoEnabled, !selectedReferences.isEmpty {
+			let candidates: [String]
+			do {
+				candidates = try resolver.codemapCandidatePaths(limit: Self.maximumCodemapCandidates + 1)
+			} catch {
+				omissions.append(.init(path: "[automatic codemap index]", reason: .readFailed))
+				candidates = []
+			}
+			if candidates.count > Self.maximumCodemapCandidates {
+				omissions.append(.init(path: "[automatic codemap index]", reason: .codemapIndexLimitExceeded))
+			} else {
+				var matches: [(path: String, displayPath: String, artifact: CodeMapSyntaxArtifact)] = []
+				for path in candidates where !selectedSet.contains(path) && !manualSet.contains(path) {
+					do {
+						let location = try resolver.location(for: path)
+						let artifact: CodeMapSyntaxArtifact
+						if let cached = artifacts[path] {
+							artifact = cached
+						} else {
+							let source = try loadSource(location).source
+							guard let outcome = makeArtifact(source: source, path: path), case .ready(let generated) = outcome else {
+								continue
+							}
+							artifact = generated
+							artifacts[path] = generated
+						}
+						guard !artifact.definedTypeNames.isDisjoint(with: selectedReferences) else { continue }
+						matches.append((path, location.displayPath, artifact))
+					} catch HeadlessContextSourceError.aggregateLimit {
+						omissions.append(.init(path: "[automatic codemap index]", reason: .budgetExceeded))
+						truncated = true
+						break
+					} catch {
+						continue
+					}
+				}
+				matches.sort { $0.displayPath.utf8.lexicographicallyPrecedes($1.displayPath.utf8) }
+				if matches.count > Self.maximumAutomaticCodemaps {
+					omissions.append(.init(path: "[automatic codemap index]", reason: .codemapIndexLimitExceeded))
+					truncated = true
+				}
+				for match in matches.prefix(Self.maximumAutomaticCodemaps) {
+					let block = PortableCodeMap.render(match.artifact, displayPath: match.displayPath)
+					guard appendCodemapBlock(block, displayPath: match.displayPath, source: .automatic) else {
+						omissions.append(.init(path: match.displayPath, reason: .budgetExceeded))
+						truncated = true
+						continue
+					}
+				}
+			}
+		}
+
+		let content = packaged()
 		return HeadlessWorkspaceContext(
 			roots: resolver.roots.map(\.lexicalPath),
 			selection: selection,
 			entries: entries,
+			sourceEvidence: sourceEvidence,
 			omissions: omissions,
+			automaticCodemapPaths: automaticCodemapPaths,
 			content: content,
 			maximumByteCount: limit,
 			truncated: truncated,
 			omittedRootCount: 0
 		)
 	}
+}
+
+private enum HeadlessContextSourceError: Error {
+	case invalidUTF8
+	case aggregateLimit
+	case contextBudget
 }
 
 private enum HeadlessWorkspacePathError: Error, Equatable {
@@ -333,6 +589,12 @@ private struct HeadlessWorkspacePathResolver: Sendable {
 			if lexical.hasPrefix(prefix) { return label + String(lexical.dropFirst(prefix.count)) }
 		}
 		return rawPath
+	}
+
+	func codemapCandidatePaths(limit: Int) throws -> [String] {
+		try HeadlessWorkspacePathIndex(roots: roots.map(\.lexicalPath))
+			.codemapCandidateEntries(limit: limit)
+			.map(\.absolutePath)
 	}
 
 	func read(at path: String, maximumBytes: Int) throws -> HeadlessSecureFile {

@@ -1,4 +1,5 @@
 import Foundation
+import RepoPromptCodeMap
 import RepoPromptCore
 @testable import RepoPromptHeadless
 import XCTest
@@ -153,7 +154,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		XCTAssertTrue(context.omissions.contains { $0.reason == .invalidUTF8 })
 		XCTAssertTrue(context.omissions.contains { $0.reason == .sliceOutOfBounds })
 		XCTAssertTrue(context.omissions.contains { $0.reason == .orphanSlice })
-		XCTAssertTrue(context.omissions.contains { $0.reason == .autoCodemapUnsupported })
+		XCTAssertTrue(context.omissions.contains { $0.reason == .codemapLanguageUnsupported })
 		XCTAssertFalse(context.content.contains("orphan"))
 		XCTAssertFalse(context.isCompleteForProvider)
 	}
@@ -165,7 +166,7 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 			let path = root.appendingPathComponent("slice-\(index).txt").path
 			slices[path] = [LineRange(start: 2, end: 2)]
 		}
-		let included = Set(slices.prefix(HeadlessWorkspaceContextBuilder.maximumSelectionEntries).map(\.key))
+		let included = Set(slices.keys.sorted().prefix(HeadlessWorkspaceContextBuilder.maximumSelectionEntries))
 		let droppedPath = try XCTUnwrap(slices.keys.first { !included.contains($0) })
 		try "FULL_FILE_MUST_NOT_APPEAR".write(toFile: droppedPath, atomically: true, encoding: .utf8)
 
@@ -186,6 +187,48 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 		)
 		XCTAssertTrue(oversizedSelection.truncated)
 		XCTAssertFalse(oversizedSelection.isCompleteForProvider)
+	}
+
+	func testPersistedManualCodemapPathsAreCappedFailClosed() throws {
+		let root = try temporaryDirectory()
+		let paths = (0 ... HeadlessWorkspaceContextBuilder.maximumSelectionEntries).map {
+			root.appendingPathComponent("missing-\($0).swift").path
+		}
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(
+				autoCodemapPaths: paths,
+				codemapAutoEnabled: false
+			),
+			maximumBytes: 4_096
+		)
+
+		XCTAssertTrue(context.truncated)
+		XCTAssertFalse(context.isCompleteForProvider)
+		XCTAssertEqual(context.omissions.count, HeadlessWorkspaceContextBuilder.maximumSelectionEntries)
+		XCTAssertFalse(context.omissions.contains { $0.path == "missing-\(HeadlessWorkspaceContextBuilder.maximumSelectionEntries).swift" })
+	}
+
+	func testPersistedMixedRepresentationsShareOneGlobalPathCap() throws {
+		let root = try temporaryDirectory()
+		let selected = (0 ..< HeadlessWorkspaceContextBuilder.maximumSelectionEntries).map {
+			root.appendingPathComponent("selected-\($0).txt").path
+		}
+		let manual = root.appendingPathComponent("manual.swift").path
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(
+				selectedPaths: selected,
+				autoCodemapPaths: [manual],
+				codemapAutoEnabled: false
+			),
+			maximumBytes: 4_096
+		)
+
+		XCTAssertTrue(context.truncated)
+		XCTAssertFalse(context.isCompleteForProvider)
+		XCTAssertEqual(context.omissions.count, HeadlessWorkspaceContextBuilder.maximumSelectionEntries)
+		XCTAssertFalse(context.omissions.contains { $0.path == "manual.swift" })
 	}
 
 	func testInRootSymlinkEscapingRootIsNeverRead() throws {
@@ -231,6 +274,144 @@ final class RepoPromptHeadlessWorkspaceContextBuilderTests: XCTestCase {
 				$0.reason == .invalidSlice || $0.reason == .sliceOutOfBounds
 			})
 		}
+	}
+
+	func testSliceAssemblerReportsInvalidIntentInsteadOfReturningFullContent() {
+		let source = "one\r\ntwo\r\nthree"
+		let assembly = WorkspaceSliceAssemblyBuilder.build(
+			from: source,
+			ranges: [LineRange(start: 9, end: 10)]
+		)
+
+		XCTAssertTrue(assembly.isInvalidSlice)
+		XCTAssertFalse(assembly.isFullFile)
+		XCTAssertTrue(assembly.segments.isEmpty)
+		XCTAssertEqual(assembly.combinedText, "")
+		XCTAssertEqual(assembly.detectedLineEnding, "\r\n")
+	}
+
+	func testSelectedAutomaticCodemapParseAndOversizeFailuresAreFailClosedOmissions() throws {
+		XCTAssertEqual(
+			HeadlessWorkspaceContextBuilder.automaticCodemapOmissionReason(
+				for: .parseFailed(.parserReturnedNilTree)
+			),
+			.codemapParseFailed
+		)
+		XCTAssertEqual(
+			HeadlessWorkspaceContextBuilder.automaticCodemapOmissionReason(
+				for: .oversize(.lines(actual: 2, limit: 1))
+			),
+			.sourceTooLarge
+		)
+		let root = try temporaryDirectory()
+		let consumer = root.appendingPathComponent("Consumer.swift")
+		let source = String(repeating: "struct Consumer { let dependency: Dependency }\n", count: 25_001)
+		try source.write(to: consumer, atomically: true, encoding: .utf8)
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [root.path]).build(
+			selection: WorkspaceSelectionSnapshot(selectedPaths: [consumer.path], codemapAutoEnabled: true),
+			maximumBytes: 2_000_000
+		)
+
+		XCTAssertTrue(context.content.contains("struct Consumer"))
+		XCTAssertTrue(context.omissions.contains { $0.path == "Consumer.swift" && $0.reason == .sourceTooLarge })
+		XCTAssertFalse(context.isCompleteForProvider)
+	}
+
+	func testAutomaticCodemapCandidatesRespectIgnoreRulesAndDeduplicateNestedRoots() throws {
+		let parent = try temporaryDirectory()
+		let nested = parent.appendingPathComponent("nested", isDirectory: true)
+		try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+		let consumer = parent.appendingPathComponent("Consumer.swift")
+		let ignored = parent.appendingPathComponent("Ignored.swift")
+		let dependency = nested.appendingPathComponent("Dependency.swift")
+		try "nested/\nIgnored.swift\n".write(to: parent.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+		try "struct Consumer {\n    let dependency: Dependency\n    let other: Other\n}\n".write(
+			to: consumer,
+			atomically: true,
+			encoding: .utf8
+		)
+		try "struct Other {}\n".write(to: ignored, atomically: true, encoding: .utf8)
+		try "struct Dependency {\n    let value: String\n    func run() -> String { value }\n}\n".write(
+			to: dependency,
+			atomically: true,
+			encoding: .utf8
+		)
+		let inventory = try HeadlessWorkspacePathIndex(roots: [parent.path, nested.path]).desktopFileEntries()
+		XCTAssertEqual(inventory.map(\.displayPath), ["root[0]:Consumer.swift", "root[1]:Dependency.swift"])
+
+		let context = HeadlessWorkspaceContextBuilder(roots: [parent.path, nested.path]).build(
+			selection: WorkspaceSelectionSnapshot(selectedPaths: [consumer.path], codemapAutoEnabled: true),
+			maximumBytes: 64_000
+		)
+
+		XCTAssertTrue(context.omissions.isEmpty, "omissions: \(context.omissions)")
+		XCTAssertEqual(context.automaticCodemapPaths, ["root[1]:Dependency.swift"])
+		XCTAssertEqual(context.content.components(separatedBy: "File: root[1]:Dependency.swift").count - 1, 1)
+		XCTAssertFalse(context.content.contains("File: root[0]:Ignored.swift"))
+	}
+
+	func testCodemapCandidateInventoryAppliesItsLimitAfterIgnoreAndNestedRootDedupe() throws {
+		let parent = try temporaryDirectory()
+		let nested = parent.appendingPathComponent("nested", isDirectory: true)
+		try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: true)
+		try "nested/\nIgnored.swift\n".write(to: parent.appendingPathComponent(".gitignore"), atomically: true, encoding: .utf8)
+		try "struct Ignored {}\n".write(to: parent.appendingPathComponent("Ignored.swift"), atomically: true, encoding: .utf8)
+		for index in 0 ..< 4 {
+			try "struct Candidate\(index) {}\n".write(
+				to: nested.appendingPathComponent("Candidate\(index).swift"),
+				atomically: true,
+				encoding: .utf8
+			)
+		}
+
+		let candidates = try HeadlessWorkspacePathIndex(roots: [parent.path, nested.path])
+			.codemapCandidateEntries(limit: 2)
+
+		XCTAssertEqual(candidates.count, 2)
+		XCTAssertEqual(Set(candidates.map(\.absolutePath)).count, 2)
+		XCTAssertFalse(candidates.contains { $0.displayPath.contains("Ignored.swift") })
+	}
+
+	func testManualAndAutomaticCodemapsUseOneHopGraphAndRenderEachPathExactlyOnce() throws {
+		let root = try temporaryDirectory()
+		let consumer = root.appendingPathComponent("Consumer.swift")
+		let dependency = root.appendingPathComponent("Dependency.swift")
+		try "struct Consumer { let dependency: Dependency }\n".write(
+			to: consumer,
+			atomically: true,
+			encoding: .utf8
+		)
+		try "struct Dependency {\n    let value: String\n    func run() -> String { value }\n}\n".write(
+			to: dependency,
+			atomically: true,
+			encoding: .utf8
+		)
+		let builder = HeadlessWorkspaceContextBuilder(roots: [root.path])
+
+		let automatic = builder.build(
+			selection: WorkspaceSelectionSnapshot(selectedPaths: [consumer.path], codemapAutoEnabled: true),
+			maximumBytes: 32_768
+		)
+		XCTAssertTrue(automatic.omissions.isEmpty)
+		XCTAssertEqual(automatic.automaticCodemapPaths, ["Dependency.swift"])
+		XCTAssertEqual(automatic.entries.filter { $0.codemapSource == .automatic }.map(\.path), ["Dependency.swift"])
+		XCTAssertEqual(automatic.content.components(separatedBy: "File: Dependency.swift").count - 1, 1)
+		XCTAssertTrue(automatic.content.hasPrefix("<file_map>\nFile: Dependency.swift\nImports:\n---"))
+		XCTAssertTrue(automatic.content.contains("<file_contents>\nFile: Consumer.swift\n```swift"))
+
+		let manualWins = builder.build(
+			selection: WorkspaceSelectionSnapshot(
+				selectedPaths: [consumer.path],
+				autoCodemapPaths: [dependency.path],
+				codemapAutoEnabled: true
+			),
+			maximumBytes: 32_768
+		)
+		XCTAssertTrue(manualWins.omissions.isEmpty)
+		XCTAssertTrue(manualWins.automaticCodemapPaths.isEmpty)
+		XCTAssertEqual(manualWins.entries.filter { $0.codemapSource == .manual }.map(\.path), ["Dependency.swift"])
+		XCTAssertEqual(manualWins.content.components(separatedBy: "File: Dependency.swift").count - 1, 1)
 	}
 
 	private func temporaryDirectory() throws -> URL {

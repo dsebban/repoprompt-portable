@@ -4,6 +4,14 @@ import RepoPromptCore
 
 public actor HeadlessToolCatalog {
 	private static let maximumReadFileBytes = 8 * 1_024 * 1_024
+	static let maximumFileSearchBytesPerFile = HeadlessWorkspaceContextBuilder.maximumSourceFileBytes
+	static let maximumFileSearchAggregateBytes = HeadlessWorkspaceContextBuilder.maximumAggregateSourceBytes
+	static let maximumFileSearchFiles = HeadlessWorkspaceContextBuilder.maximumCodemapCandidates
+	static let maximumFileSearchResults = 1_000
+	static let maximumFileSearchContextLines = 20
+	static let maximumFileSearchPatternBytes = 1_024
+	static let maximumFileSearchPreviewJSONBytes = 16 * 1_024
+	static let maximumFileSearchOutputBytes = 1_024 * 1_024
 	private static let maximumSelectionEntries = HeadlessWorkspaceContextBuilder.maximumSelectionEntries
 	private static let maximumRangesPerFile = HeadlessWorkspaceContextBuilder.maximumRangesPerFile
 	private static let maximumTotalRanges = HeadlessWorkspaceContextBuilder.maximumTotalRanges
@@ -132,7 +140,7 @@ public actor HeadlessToolCatalog {
 			),
 			Self.tool(
 				name: "manage_selection",
-				description: "Manage the in-memory headless selection set.",
+				description: "Manage explicit full-file, described slice, and manual-codemap selection. Optionally update automatic codemap derivation atomically; returned details preserve legacy fields.",
 				properties: [
 					"op": Self.stringSchema(description: "get, set, add, remove, or clear."),
 					"paths": .object(["type": .string("array"), "items": .object(["type": .string("string")])]),
@@ -163,13 +171,13 @@ public actor HeadlessToolCatalog {
 							])
 					]),
 					"view": Self.stringSchema(description: "summary, files, or content."),
-					"mode": Self.stringSchema(description: "full, slices, or codemap_only. codemap_only source is never expanded in headless mode."),
+					"mode": Self.stringSchema(description: "full, slices, or codemap_only. Manual codemaps are explicit; automatic codemaps are derived without mutating selection."),
 					"codemap_auto_enabled": .object(["type": .string("boolean"), "description": .string("Optional automatic-codemap state applied atomically with the mutation.")])
 				]
 			),
 			Self.tool(
 				name: "context_builder",
-				description: "Render the current explicit in-memory file and slice selection. It never discovers or changes selection; use manage_selection first. clarify stays local; plan, review, and pro_edit invoke the configured Oracle provider with the rendered selection. pro_edit returns instructions only and never writes, delegates, or applies.",
+				description: "Render the current explicit in-memory file, slice, and manual-codemap selection plus derived automatic codemaps when enabled. Rendering never changes selection; use manage_selection first. clarify stays local; plan, review, and pro_edit invoke the configured Oracle provider with the same canonical context bytes. pro_edit returns instructions only and never writes, delegates, or applies.",
 				properties: [
 					"instructions": Self.stringSchema(description: "Required clarify, plan, review, or pro_edit request; returned unchanged after trimming. pro_edit returns instructions only and never writes, delegates, or applies."),
 					"response_type": .object([
@@ -214,13 +222,29 @@ public actor HeadlessToolCatalog {
 			),
 			Self.tool(
 				name: "file_search",
-				description: "Search file paths and UTF-8 file contents under the headless workspace roots.",
+				description: "Search root-contained regular-file paths and bounded UTF-8 file contents using literal case-insensitive matching. Regex mode is disabled.",
 				properties: [
-					"pattern": Self.stringSchema(description: "Search pattern."),
-					"regex": .object(["type": .string("boolean")]),
+					"pattern": .object([
+						"type": .string("string"),
+						"description": .string("Literal search pattern, limited to 1024 UTF-8 bytes."),
+						"maxLength": .int(Self.maximumFileSearchPatternBytes)
+					]),
+					"regex": .object([
+						"type": .string("boolean"),
+						"description": .string("Regex mode is disabled; only false is accepted."),
+						"enum": .array([.bool(false)])
+					]),
 					"mode": Self.stringSchema(description: "auto, path, content, or both."),
-					"max_results": .object(["type": .string("integer"), "minimum": .int(1)]),
-					"context_lines": .object(["type": .string("integer"), "minimum": .int(0)]),
+					"max_results": .object([
+						"type": .string("integer"),
+						"minimum": .int(1),
+						"maximum": .int(Self.maximumFileSearchResults)
+					]),
+					"context_lines": .object([
+						"type": .string("integer"),
+						"minimum": .int(0),
+						"maximum": .int(Self.maximumFileSearchContextLines)
+					]),
 					"count_only": .object(["type": .string("boolean")])
 				],
 				required: ["pattern"]
@@ -564,56 +588,241 @@ public actor HeadlessToolCatalog {
 	}
 
 	private func fileSearch(_ args: [String: Value]) async throws -> CallTool.Result {
-		guard let pattern = args["pattern"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !pattern.isEmpty else {
+		try Task.checkCancellation()
+		guard let rawPattern = args["pattern"]?.stringValue else {
+			throw HeadlessToolError("file_search requires non-empty string argument `pattern`.", code: "invalid_params")
+		}
+		guard rawPattern.utf8.count <= Self.maximumFileSearchPatternBytes else {
+			throw HeadlessToolError(
+				"file_search `pattern` exceeds \(Self.maximumFileSearchPatternBytes) UTF-8 bytes.",
+				code: "invalid_params"
+			)
+		}
+		let pattern = rawPattern.trimmingCharacters(in: .whitespacesAndNewlines)
+		guard !pattern.isEmpty else {
 			throw HeadlessToolError("file_search requires non-empty string argument `pattern`.", code: "invalid_params")
 		}
 		let mode = args["mode"]?.stringValue ?? "auto"
-		let regex = args["regex"]?.boolValue ?? false
-		let maxResults = max(1, args["max_results"]?.intValue ?? 50)
-		let contextLines = max(0, args["context_lines"]?.intValue ?? 0)
+		guard ["auto", "path", "content", "both"].contains(mode) else {
+			throw HeadlessToolError("file_search mode must be auto, path, content, or both.", code: "invalid_params")
+		}
+		if let regex = args["regex"], regex.boolValue != false {
+			throw HeadlessToolError(
+				"file_search regex mode is disabled; `regex` must be false.",
+				code: "invalid_params"
+			)
+		}
+		let maxResults = try boundedFileSearchInteger(
+			args["max_results"],
+			name: "max_results",
+			defaultValue: 50,
+			range: 1 ... Self.maximumFileSearchResults
+		)
+		let contextLines = try boundedFileSearchInteger(
+			args["context_lines"],
+			name: "context_lines",
+			defaultValue: 0,
+			range: 0 ... Self.maximumFileSearchContextLines
+		)
 		let countOnly = args["count_only"]?.boolValue ?? false
-		let matcher = try SearchMatcher(pattern: pattern, regex: regex)
+		let matcher = SearchMatcher(pattern: pattern)
 		var matches: [JSONValue] = []
 		var total = 0
+		var incomplete = false
+		var searchedBytes = 0
+		var remainingOutputBytes = max(
+			0,
+			Self.maximumFileSearchOutputBytes
+				- 2_048
+				- Self.conservativeJSONStringBytes(pattern)
+		)
+		let enumeration = try pathIndex.rootContainedFiles(limit: Self.maximumFileSearchFiles)
+		incomplete = enumeration.truncated
 
-		for file in pathIndex.allFiles() {
-			guard matches.count < maxResults || countOnly else { break }
+		searchLoop: for file in enumeration.files {
+			try Task.checkCancellation()
 			let relative = pathIndex.displayPath(file)
 			if mode == "path" || mode == "both" || mode == "auto" {
 				if matcher.matches(relative) {
 					total += 1
-					if !countOnly, matches.count < maxResults {
-						matches.append(.object(["path": .string(relative), "kind": .string("path")]))
+					if !countOnly {
+						guard matches.count < maxResults else {
+							incomplete = true
+							break searchLoop
+						}
+						let matchBytes = 256 + Self.conservativeJSONStringBytes(relative)
+						guard matchBytes <= remainingOutputBytes else {
+							incomplete = true
+							break searchLoop
+						}
+						remainingOutputBytes -= matchBytes
+						matches.append(.object([
+							"path": .string(relative),
+							"kind": .string("path")
+						]))
 					}
 				}
 			}
 			if mode == "content" || mode == "both" || mode == "auto" {
-				guard let text = try? String(contentsOfFile: file, encoding: .utf8) else { continue }
+				let remainingBytes = Self.maximumFileSearchAggregateBytes - searchedBytes
+				guard remainingBytes > 0 else {
+					incomplete = true
+					continue
+				}
+				let secureFile: HeadlessSecureFile
+				do {
+					secureFile = try HeadlessSecureFileReader.read(
+						path: file,
+						roots: roots,
+						maximumBytes: min(Self.maximumFileSearchBytesPerFile, remainingBytes)
+					)
+				} catch HeadlessSecureFileError.tooLarge {
+					incomplete = true
+					continue
+				} catch {
+					// Enumeration and open are separate operations. Any symlink swap,
+					// non-regular replacement, or root escape fails closed here.
+					incomplete = true
+					continue
+				}
+				searchedBytes += secureFile.data.count
+				guard let text = String(data: secureFile.data, encoding: .utf8) else { continue }
 				let lines = text.split(separator: "\n", omittingEmptySubsequences: false).map(String.init)
-				for (offset, line) in lines.enumerated() where matcher.matches(line) {
+				for (offset, line) in lines.enumerated() {
+					try Task.checkCancellation()
+					guard matcher.matches(line) else { continue }
 					total += 1
-					if !countOnly, matches.count < maxResults {
+					if !countOnly {
+						guard matches.count < maxResults else {
+							incomplete = true
+							break searchLoop
+						}
 						let start = max(0, offset - contextLines)
 						let end = min(lines.count, offset + contextLines + 1)
+						let preview = try Self.boundedFileSearchPreview(
+							lines: lines,
+							range: start ..< end
+						)
+						if preview.truncated { incomplete = true }
+						let matchBytes =
+							256
+							+ Self.conservativeJSONStringBytes(relative)
+							+ Self.conservativeJSONStringBytes(preview.text)
+						guard matchBytes <= remainingOutputBytes else {
+							incomplete = true
+							break searchLoop
+						}
+						remainingOutputBytes -= matchBytes
 						matches.append(.object([
 							"path": .string(relative),
 							"kind": .string("content"),
 							"line": .int(offset + 1),
-							"preview": .string(Array(lines[start..<end]).joined(separator: "\n"))
+							"preview": .string(preview.text)
 						]))
 					}
-					if matches.count >= maxResults, !countOnly { break }
 				}
 			}
 		}
 
-		return try jsonResult([
-			"pattern": .string(pattern),
-			"regex": .bool(regex),
-			"total_matches": .int(total),
-			"matches": .array(matches),
-			"truncated": .bool(!countOnly && total > matches.count)
-		])
+		return try fileSearchResult(
+			pattern: pattern,
+			total: total,
+			matches: matches,
+			truncated: incomplete || (!countOnly && total > matches.count)
+		)
+	}
+
+	private func fileSearchResult(
+		pattern: String,
+		total: Int,
+		matches: [JSONValue],
+		truncated: Bool
+	) throws -> CallTool.Result {
+		var boundedMatches = matches
+		var isTruncated = truncated
+		while true {
+			try Task.checkCancellation()
+			let payload = JSONValue.object([
+				"pattern": .string(pattern),
+				"regex": .bool(false),
+				"total_matches": .int(total),
+				"matches": .array(boundedMatches),
+				"truncated": .bool(isTruncated)
+			])
+			let data = try encoder.encode(payload)
+			if data.count <= Self.maximumFileSearchOutputBytes {
+				let text = String(decoding: data, as: UTF8.self)
+				return CallTool.Result(
+					content: [.text(text: text, annotations: nil, _meta: nil)],
+					isError: false
+				)
+			}
+			guard !boundedMatches.isEmpty else {
+				throw HeadlessToolError(
+					"file_search result exceeds its encoded output budget.",
+					code: "internal_error"
+				)
+			}
+			boundedMatches.removeLast()
+			isTruncated = true
+		}
+	}
+
+	private static func boundedFileSearchPreview(
+		lines: [String],
+		range: Range<Int>
+	) throws -> (text: String, truncated: Bool) {
+		var text = ""
+		var remainingBytes = maximumFileSearchPreviewJSONBytes - 2
+		for lineIndex in range {
+			try Task.checkCancellation()
+			if lineIndex > range.lowerBound {
+				guard remainingBytes >= 2 else { return (text, true) }
+				text.append("\n")
+				remainingBytes -= 2
+			}
+			for (scalarIndex, scalar) in lines[lineIndex].unicodeScalars.enumerated() {
+				if scalarIndex.isMultiple(of: 256) { try Task.checkCancellation() }
+				let byteCount = conservativeJSONScalarBytes(scalar)
+				guard byteCount <= remainingBytes else { return (text, true) }
+				text.unicodeScalars.append(scalar)
+				remainingBytes -= byteCount
+			}
+		}
+		return (text, false)
+	}
+
+	private static func conservativeJSONStringBytes(_ value: String) -> Int {
+		2 + value.unicodeScalars.reduce(into: 0) { count, scalar in
+			count += conservativeJSONScalarBytes(scalar)
+		}
+	}
+
+	private static func conservativeJSONScalarBytes(_ scalar: Unicode.Scalar) -> Int {
+		switch scalar.value {
+		case 0x08, 0x09, 0x0A, 0x0C, 0x0D, 0x22, 0x5C:
+			return 2
+		case 0x00 ... 0x1F, 0x2028, 0x2029:
+			return 6
+		default:
+			return scalar.utf8.count
+		}
+	}
+
+	private func boundedFileSearchInteger(
+		_ value: Value?,
+		name: String,
+		defaultValue: Int,
+		range: ClosedRange<Int>
+	) throws -> Int {
+		guard let value else { return defaultValue }
+		guard let integer = value.intValue, range.contains(integer) else {
+			throw HeadlessToolError(
+				"file_search `\(name)` must be an integer in \(range.lowerBound)...\(range.upperBound).",
+				code: "invalid_params"
+			)
+		}
+		return integer
 	}
 
 	private func appendTreeLines(path: String, prefix: String, lines: inout [String], maxDepth: Int?, currentDepth: Int, foldersOnly: Bool) throws {
@@ -682,12 +891,18 @@ public actor HeadlessToolCatalog {
 				"slice_details": .array(displaySliceDetails(context.selection.slices)),
 				"codemap_auto_enabled": .bool(context.selection.codemapAutoEnabled)
 			]),
+			"automatic_codemap_paths": .array(context.automaticCodemapPaths.map { .string($0) }),
+			"resolved_codemaps": .array(context.entries.compactMap { entry in
+				guard let source = entry.codemapSource else { return nil }
+				return .object(["path": .string(entry.path), "source": .string(source.rawValue)])
+			}),
 			"entries": .array(context.entries.map { entry in
 				var value: [String: JSONValue] = [
 					"path": .string(entry.path),
 					"kind": .string(entry.kind.rawValue),
 					"content_bytes": .int(entry.byteCount)
 				]
+				if let source = entry.codemapSource { value["codemap_source"] = .string(source.rawValue) }
 				if let start = entry.startLine { value["start_line"] = .int(start) }
 				if let end = entry.endLine { value["end_line"] = .int(end) }
 				return .object(value)
@@ -1039,19 +1254,13 @@ private struct HeadlessToolError: Error, Sendable {
 
 private struct SearchMatcher {
 	let pattern: String
-	let regex: NSRegularExpression?
 
-	init(pattern: String, regex: Bool) throws {
+	init(pattern: String) {
 		self.pattern = pattern
-		self.regex = regex ? try NSRegularExpression(pattern: pattern) : nil
 	}
 
 	func matches(_ value: String) -> Bool {
-		if let regex {
-			let range = NSRange(value.startIndex..<value.endIndex, in: value)
-			return regex.firstMatch(in: value, range: range) != nil
-		}
-		return value.localizedCaseInsensitiveContains(pattern)
+		value.localizedCaseInsensitiveContains(pattern)
 	}
 }
 

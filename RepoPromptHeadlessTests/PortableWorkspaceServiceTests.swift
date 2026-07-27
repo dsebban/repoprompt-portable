@@ -228,6 +228,205 @@ final class PortableWorkspaceServiceTests: XCTestCase {
 		XCTAssertTrue(cleared.codemapAutoEnabled)
 	}
 
+	func testAddFullFilesClearsExistingSliceIntent() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("selected.swift")
+		try "one\ntwo".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let service = PortableWorkspaceService(bootstrap: bootstrap)
+		_ = try await service.setSlices([
+			PortableSliceSelection(path: file.path, ranges: [PortableLineRange(startLine: 1)])
+		])
+
+		let selection = try await service.addFiles([file.path])
+
+		XCTAssertTrue(selection.selectedAbsolutePaths.contains(file.path))
+		XCTAssertFalse(selection.slices.contains { $0.path == file.path })
+	}
+
+	func testSliceRangeMathHandlesIntMaxWithoutOverflow() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("selected.swift")
+		try "line".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let service = PortableWorkspaceService(bootstrap: bootstrap)
+
+		let duplicateMaximum = try await service.setSlices([
+			PortableSliceSelection(path: file.path, ranges: [
+				PortableLineRange(startLine: Int.max),
+				PortableLineRange(startLine: Int.max)
+			])
+		])
+		XCTAssertEqual(duplicateMaximum.slices.first?.ranges, [PortableLineRange(startLine: Int.max)])
+
+		_ = try await service.setSlices([
+			PortableSliceSelection(
+				path: file.path,
+				ranges: [PortableLineRange(startLine: Int.max - 1, endLine: Int.max)]
+			)
+		])
+		let subtracted = try await service.mutateSelection(.subtractSlices([
+			PortableSliceSelection(path: file.path, ranges: [PortableLineRange(startLine: Int.max)])
+		]))
+		XCTAssertEqual(
+			subtracted.slices.first?.ranges,
+			[PortableLineRange(startLine: Int.max - 1)]
+		)
+	}
+
+	func testTypedSliceSubtractionNeverPromotesToFullContent() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("secret.swift")
+		try "secret-one\nsecret-two".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let service = PortableWorkspaceService(bootstrap: bootstrap)
+		let slice = PortableSliceSelection(
+			path: file.path,
+			ranges: [PortableLineRange(startLine: 1, endLine: 2)]
+		)
+		_ = try await service.setSlices([slice])
+
+		let unchanged = try await service.mutateSelection(.subtractSlices([
+			PortableSliceSelection(path: file.path, ranges: [])
+		]))
+		XCTAssertEqual(unchanged.slices, [slice])
+
+		let removed = try await service.mutateSelection(.subtractSlices([slice]))
+		XCTAssertFalse(removed.selectedAbsolutePaths.contains(file.path))
+		XCTAssertTrue(removed.slices.isEmpty)
+		let preview = try await service.previewContext()
+		XCTAssertFalse(preview.content.contains("secret-one"))
+	}
+
+	func testCatalogSelectionAdapterPreservesSchemaOneMutationSemantics() async throws {
+		let root = try temporaryDirectory()
+		let first = root.appendingPathComponent("first.swift")
+		let second = root.appendingPathComponent("second.swift")
+		let third = root.appendingPathComponent("third.swift")
+		for file in [first, second, third] {
+			try "one\ntwo\nthree".write(to: file, atomically: true, encoding: .utf8)
+		}
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let service = PortableWorkspaceService(bootstrap: bootstrap)
+
+		_ = try await service.applySelection(
+			operation: .set,
+			mode: .full,
+			paths: [first.path],
+			codemapAutoEnabledOverride: false
+		)
+		_ = try await service.applySelection(
+			operation: .add,
+			mode: .slices,
+			slices: [.init(path: second.path, ranges: [.init(start: 1, end: 1)])]
+		)
+		var selection = try await service.applySelection(
+			operation: .add,
+			mode: .slices,
+			slices: [.init(path: second.path, ranges: [.init(start: 2, end: 2)])]
+		)
+		XCTAssertEqual(selection.slices[second.path], [.init(start: 1, end: 2)])
+
+		selection = try await service.applySelection(operation: .add, mode: .full, paths: [second.path])
+		XCTAssertNil(selection.slices[second.path])
+		XCTAssertTrue(selection.selectedPaths.contains(second.path))
+
+		_ = try await service.applySelection(operation: .add, mode: .codemapOnly, paths: [third.path])
+		selection = try await service.applySelection(
+			operation: .add,
+			mode: .slices,
+			slices: [.init(path: second.path, ranges: [.init(start: 1, end: 2)])]
+		)
+		XCTAssertEqual(selection.selectedPaths, [first.path, second.path])
+		XCTAssertEqual(selection.slices[second.path], [.init(start: 1, end: 2)])
+		XCTAssertEqual(selection.manualCodemapPaths, [third.path])
+		XCTAssertFalse(selection.codemapAutoEnabled)
+
+		selection = try await service.applySelection(
+			operation: .remove,
+			mode: .slices,
+			slices: [.init(path: second.path, ranges: [.init(start: 1, end: 1)])]
+		)
+		XCTAssertTrue(selection.selectedPaths.contains(second.path))
+		XCTAssertEqual(selection.slices[second.path], [.init(start: 2, end: 2)])
+
+		_ = try await service.applySelection(operation: .add, mode: .codemapOnly, paths: [third.path])
+		selection = try await service.applySelection(operation: .remove, mode: .codemapOnly, paths: [third.path])
+		XCTAssertFalse(selection.manualCodemapPaths.contains(third.path))
+		XCTAssertTrue(selection.selectedPaths.contains(second.path))
+	}
+
+	func testCatalogSelectionAdapterResolvesEveryModeInMultiRootWorkspaces() async throws {
+		let first = try temporaryDirectory()
+		let second = try temporaryDirectory()
+		let full = second.appendingPathComponent("full.swift")
+		let sliced = second.appendingPathComponent("sliced.swift")
+		let codemap = second.appendingPathComponent("codemap.swift")
+		for file in [full, sliced, codemap] {
+			try "one\ntwo".write(to: file, atomically: true, encoding: .utf8)
+		}
+		let bootstrap = try await bootstrap(roots: [first.path, second.path])
+		let service = PortableWorkspaceService(bootstrap: bootstrap)
+
+		var selection = try await service.applySelection(
+			operation: .set,
+			mode: .full,
+			paths: ["root[1]:full.swift"]
+		)
+		XCTAssertEqual(selection.selectedPaths, [full.path])
+
+		selection = try await service.applySelection(
+			operation: .set,
+			mode: .slices,
+			slices: [.init(path: "root[1]:sliced.swift", ranges: [.init(start: 1, end: 1)])]
+		)
+		XCTAssertEqual(selection.selectedPaths, [sliced.path])
+		XCTAssertEqual(selection.slices[sliced.path], [.init(start: 1, end: 1)])
+
+		selection = try await service.applySelection(
+			operation: .set,
+			mode: .codemapOnly,
+			paths: ["root[1]:codemap.swift"]
+		)
+		XCTAssertEqual(selection.manualCodemapPaths, [codemap.path])
+		let before = selection
+
+		for invalid in ["root[9]:outside.swift", "../outside.swift"] {
+			do {
+				_ = try await service.applySelection(operation: .add, mode: .full, paths: [invalid])
+				XCTFail("Expected invalid path: \(invalid)")
+			} catch let error as PortableWorkspaceServiceError {
+				XCTAssertTrue(["invalid_params", "path_outside_workspace"].contains(error.code))
+			}
+			let after = await bootstrap.session.selectionStore.snapshot(tabID: nil)
+			XCTAssertEqual(after, before)
+		}
+	}
+
+	func testTypedSelectionMutationRejectsMergedDescriptionOverflowAtomically() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("file.swift")
+		try "one\ntwo".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let service = PortableWorkspaceService(bootstrap: bootstrap)
+		_ = try await service.addFiles([file.path])
+		let before = await bootstrap.session.selectionStore.snapshot(tabID: nil)
+
+		do {
+			_ = try await service.setSlices([
+				PortableSliceSelection(path: file.path, ranges: [
+					PortableLineRange(startLine: 1, description: String(repeating: "a", count: 600)),
+					PortableLineRange(startLine: 2, description: String(repeating: "b", count: 600))
+				])
+			])
+			XCTFail("Expected merged description overflow")
+		} catch let error as PortableWorkspaceServiceError {
+			XCTAssertEqual(error.code, "invalid_params")
+		}
+		let after = await bootstrap.session.selectionStore.snapshot(tabID: nil)
+		XCTAssertEqual(after, before)
+	}
+
 	func testTypedSelectionMutationRejectsInvalidDescriptionAtomically() async throws {
 		let root = try temporaryDirectory()
 		let file = root.appendingPathComponent("file.swift")
@@ -337,18 +536,110 @@ final class PortableWorkspaceServiceTests: XCTestCase {
 			oracleWorkflow: try workflow(provider: provider)
 		)
 		try await service.addFiles([file.path])
+		let preview = try await service.previewContext()
 
-		let result = try await service.generatePlan(instructions: "Plan the change")
+		let result = try await service.generatePlan(
+			instructions: "Plan the change",
+			expectedContextContent: preview.content
+		)
 
 		XCTAssertEqual(result.status, .completed)
 		XCTAssertEqual(result.primary.response, "primary plan")
 		XCTAssertEqual(result.secondary.response, "secondary plan")
 		let expectedContext = "<file_contents>\nFile: selected.txt\n```txt\nPLAN_SENTINEL\n```\n</file_contents>"
 		XCTAssertEqual(Data(result.context.content.utf8), Data(expectedContext.utf8))
+		XCTAssertEqual(Data(result.context.content.utf8), Data(preview.content.utf8))
 		let requests = await provider.requests()
 		XCTAssertEqual(requests.count, 2)
 		XCTAssertTrue(requests.allSatisfy { $0.userPrompt.contains("request_mode: plan") })
 		XCTAssertTrue(requests.allSatisfy { $0.userPrompt.contains(expectedContext) })
+	}
+
+	func testGenerateReviewUsesFixedReviewModeAndCanonicalContext() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("selected.txt")
+		try "REVIEW_SENTINEL".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let provider = PortableWorkspaceProvider()
+		let service = PortableWorkspaceService(
+			roots: bootstrap.roots,
+			session: bootstrap.session,
+			oracleWorkflow: try workflow(provider: provider)
+		)
+		try await service.addFiles([file.path])
+		let preview = try await service.previewContext()
+
+		let result = try await service.generateReview(
+			instructions: "Review the selection",
+			expectedContextContent: preview.content
+		)
+
+		XCTAssertEqual(result.status, .completed)
+		let requests = await provider.requests()
+		XCTAssertEqual(requests.count, 2)
+		XCTAssertTrue(requests.allSatisfy { $0.userPrompt.contains("request_mode: review") })
+		XCTAssertTrue(requests.allSatisfy { $0.userPrompt.contains(result.context.content) })
+		XCTAssertEqual(Data(result.context.content.utf8), Data(preview.content.utf8))
+	}
+
+	func testExecuteOracleChecksCancellationAfterRenderingBeforeProviderRequests() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("selected.txt")
+		try "SELECTED".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let provider = PortableWorkspaceProvider()
+		let service = PortableWorkspaceService(
+			roots: bootstrap.roots,
+			session: bootstrap.session,
+			oracleWorkflow: try workflow(provider: provider)
+		)
+		try await service.addFiles([file.path])
+
+		let task = Task {
+			withUnsafeCurrentTask { $0?.cancel() }
+			return try await service.executeOracle(
+				mode: .plan,
+				request: "Plan the change",
+				maximumBytes: PortableWorkspaceService.contextByteBudget
+			)
+		}
+		do {
+			_ = try await task.value
+			XCTFail("Expected cancellation")
+		} catch is CancellationError {}
+		let requestCount = await provider.requestCount()
+		XCTAssertEqual(requestCount, 0)
+	}
+
+	func testGeneratePlanRejectsStalePreviewBeforeProviderRequest() async throws {
+		let root = try temporaryDirectory()
+		let file = root.appendingPathComponent("selected.txt")
+		try "PREVIEW_BYTES".write(to: file, atomically: true, encoding: .utf8)
+		let bootstrap = try await bootstrap(roots: [root.path])
+		let provider = PortableWorkspaceProvider()
+		let service = PortableWorkspaceService(
+			roots: bootstrap.roots,
+			session: bootstrap.session,
+			oracleWorkflow: try workflow(provider: provider)
+		)
+		try await service.addFiles([file.path])
+		let preview = try await service.previewContext()
+		try "CHANGED_BYTES".write(to: file, atomically: true, encoding: .utf8)
+
+		do {
+			_ = try await service.generatePlan(
+				instructions: "Plan the change",
+				expectedContextContent: preview.content
+			)
+			XCTFail("Expected stale preview rejection")
+		} catch PortableWorkspaceServiceError.staleContextPreview(let refreshed) {
+			XCTAssertTrue(refreshed.content.contains("CHANGED_BYTES"))
+			XCTAssertFalse(refreshed.content.contains("PREVIEW_BYTES"))
+		} catch {
+			XCTFail("Unexpected error: \(error)")
+		}
+		let requestCount = await provider.requestCount()
+		XCTAssertEqual(requestCount, 0)
 	}
 
 	func testGeneratePlanFailsClosedBeforeProviderWhenSelectionBecomesUnreadable() async throws {

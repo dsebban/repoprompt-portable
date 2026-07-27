@@ -22,7 +22,9 @@ package enum SliceRangeMath {
 				merged.append(range)
 				continue
 			}
-			if range.start <= last.end + 1 {
+			let overlapsOrTouches = range.start <= last.end
+				|| (last.end < Int.max && range.start == last.end + 1)
+			if overlapsOrTouches {
 				let combinedEnd = max(last.end, range.end)
 				merged.removeLast()
 				let description = mergedDescription(last, range)
@@ -59,7 +61,7 @@ package enum SliceRangeMath {
 
 			var index = removalIndex
 			var localStart = currentStart
-
+			var exhausted = false
 			while index < removalCount {
 				let removal = removingNormalized[index]
 				if removal.start > currentEnd {
@@ -74,7 +76,7 @@ package enum SliceRangeMath {
 				}
 
 				if removal.end >= currentEnd {
-					localStart = currentEnd + 1
+					exhausted = true
 					break
 				} else {
 					localStart = max(localStart, removal.end + 1)
@@ -82,7 +84,7 @@ package enum SliceRangeMath {
 				}
 			}
 
-			if localStart <= currentEnd {
+			if !exhausted, localStart <= currentEnd {
 				result.append(LineRange(start: localStart, end: currentEnd, description: range.description))
 			}
 		}

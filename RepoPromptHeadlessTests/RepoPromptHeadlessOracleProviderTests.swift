@@ -295,4 +295,178 @@ final class RepoPromptHeadlessOracleProviderTests: XCTestCase {
 			XCTAssertEqual(failure.retryAfterSeconds, 30)
 		}
 	}
+
+	func testOversizedChunkedSuccessAndErrorBodiesAreCancelledAtStreamingCap() async throws {
+		OversizedChunkedURLProtocol.reset()
+		for statusCode in [200, 503] {
+			let endpoint = try XCTUnwrap(URL(
+				string: "https://chunked-provider.example/\(statusCode)"
+			))
+			let configuration = try HeadlessOracleConfiguration(
+				endpoint: endpoint,
+				primaryModel: "primary",
+				secondaryModel: "secondary"
+			)
+			let sessionConfiguration = URLSessionConfiguration.ephemeral
+			sessionConfiguration.protocolClasses = [OversizedChunkedURLProtocol.self]
+			let injectedSession = URLSession(configuration: sessionConfiguration)
+			defer { injectedSession.invalidateAndCancel() }
+			let provider = OpenAICompatibleOracleProvider(
+				configuration: configuration,
+				session: injectedSession
+			)
+
+			do {
+				_ = try await provider.complete(providerRequest(model: "primary"))
+				XCTFail("Expected the chunked response to exceed the streaming cap.")
+			} catch let failure as HeadlessOracleProviderFailure {
+				XCTAssertEqual(failure.code, .invalidResponse)
+				XCTAssertEqual(failure.httpStatus, statusCode)
+				XCTAssertEqual(failure.requestID, "chunked-\(statusCode)")
+				XCTAssertEqual(failure.message, "Oracle provider response exceeded 2 MiB.")
+			}
+		}
+		XCTAssertEqual(OversizedChunkedURLProtocol.stopCount, 2)
+		XCTAssertLessThan(
+			OversizedChunkedURLProtocol.deliveredBytes,
+			4 * OpenAICompatibleOracleProvider.maximumResponseBytes,
+			"The provider must cancel each chunked transfer instead of consuming the complete fixture."
+		)
+	}
+
+	func testCancellingProviderTaskCancelsStreamingTransport() async throws {
+		OversizedChunkedURLProtocol.reset()
+		let configuration = try HeadlessOracleConfiguration(
+			endpoint: XCTUnwrap(URL(string: "https://chunked-provider.example/200")),
+			primaryModel: "primary",
+			secondaryModel: "secondary"
+		)
+		let sessionConfiguration = URLSessionConfiguration.ephemeral
+		sessionConfiguration.protocolClasses = [OversizedChunkedURLProtocol.self]
+		let injectedSession = URLSession(configuration: sessionConfiguration)
+		defer { injectedSession.invalidateAndCancel() }
+		let provider = OpenAICompatibleOracleProvider(
+			configuration: configuration,
+			session: injectedSession
+		)
+		let operation = Task {
+			try await provider.complete(providerRequest(model: "primary"))
+		}
+		try await Task.sleep(nanoseconds: 5_000_000)
+		operation.cancel()
+
+		do {
+			_ = try await operation.value
+			XCTFail("Expected cancellation.")
+		} catch is CancellationError {
+			// Expected.
+		}
+		XCTAssertEqual(OversizedChunkedURLProtocol.stopCount, 1)
+	}
+
+	private func providerRequest(model: String) -> HeadlessOracleProviderRequest {
+		HeadlessOracleProviderRequest(
+			pairID: UUID(),
+			lane: .primary,
+			model: model,
+			reasoningEffort: nil,
+			systemPrompt: "system",
+			userPrompt: "user"
+		)
+	}
+}
+
+private final class OversizedChunkedURLProtocol: URLProtocol {
+	private static let stateLock = NSLock()
+	private static var storedStopCount = 0
+	private static var storedDeliveredBytes = 0
+
+	private let instanceLock = NSLock()
+	private var stopped = false
+	private let deliveryQueue = DispatchQueue(label: "RepoPromptHeadlessTests.OversizedChunkedURLProtocol")
+	private let chunk = Data(repeating: 0x78, count: 64 * 1_024)
+	private var remainingChunks = 64
+
+	static var stopCount: Int {
+		stateLock.lock()
+		defer { stateLock.unlock() }
+		return storedStopCount
+	}
+
+	static var deliveredBytes: Int {
+		stateLock.lock()
+		defer { stateLock.unlock() }
+		return storedDeliveredBytes
+	}
+
+	static func reset() {
+		stateLock.lock()
+		storedStopCount = 0
+		storedDeliveredBytes = 0
+		stateLock.unlock()
+	}
+
+	override class func canInit(with request: URLRequest) -> Bool {
+		request.url?.host == "chunked-provider.example"
+	}
+
+	override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+		request
+	}
+
+	override func startLoading() {
+		deliveryQueue.async { [self] in
+			guard !isStopped else { return }
+			let statusCode = Int(request.url?.lastPathComponent ?? "") ?? 200
+			guard let response = HTTPURLResponse(
+				url: request.url!,
+				statusCode: statusCode,
+				httpVersion: "HTTP/1.1",
+				headerFields: [
+					"Content-Type": "application/json",
+					"Transfer-Encoding": "chunked",
+					"X-Request-ID": "chunked-\(statusCode)"
+				]
+			) else {
+				client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+				return
+			}
+			client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+			deliverNextChunk()
+		}
+	}
+
+	override func stopLoading() {
+		instanceLock.lock()
+		let wasStopped = stopped
+		stopped = true
+		instanceLock.unlock()
+		if !wasStopped {
+			Self.stateLock.lock()
+			Self.storedStopCount += 1
+			Self.stateLock.unlock()
+		}
+	}
+
+	private var isStopped: Bool {
+		instanceLock.lock()
+		defer { instanceLock.unlock() }
+		return stopped
+	}
+
+	private func deliverNextChunk() {
+		guard !isStopped else { return }
+		guard remainingChunks > 0 else {
+			client?.urlProtocolDidFinishLoading(self)
+			return
+		}
+		remainingChunks -= 1
+		client?.urlProtocol(self, didLoad: chunk)
+		Self.stateLock.lock()
+		Self.storedDeliveredBytes += chunk.count
+		Self.stateLock.unlock()
+		deliveryQueue.asyncAfter(deadline: .now() + .milliseconds(1)) { [self] in
+			deliverNextChunk()
+		}
+	}
 }

@@ -1,4 +1,5 @@
 import Foundation
+import Crypto
 
 #if canImport(Darwin)
 import Darwin
@@ -11,11 +12,16 @@ enum HeadlessSecureFileError: Error {
 	case outsideWorkspace
 	case notRegularFile
 	case tooLarge(Int)
+	case changedDuringRead
 }
 
-struct HeadlessSecureFile: Sendable {
+struct HeadlessSecureFile: Equatable, Sendable {
 	let data: Data
 	let byteCount: Int
+	let canonicalPath: String
+	let deviceID: UInt64
+	let fileID: UInt64
+	let sha256: String
 }
 
 enum HeadlessSecureFileReader {
@@ -48,7 +54,23 @@ enum HeadlessSecureFileReader {
 		guard byteCount <= maximumBytes else { throw HeadlessSecureFileError.tooLarge(byteCount) }
 		let data = try handle.read(upToCount: maximumBytes + 1) ?? Data()
 		guard data.count <= maximumBytes else { throw HeadlessSecureFileError.tooLarge(data.count) }
-		return HeadlessSecureFile(data: data, byteCount: byteCount)
+		var finalInfo = stat()
+		guard fstat(descriptor, &finalInfo) == 0 else { throw HeadlessSecureFileError.openFailed }
+		guard info.st_dev == finalInfo.st_dev,
+			info.st_ino == finalInfo.st_ino,
+			info.st_size == finalInfo.st_size,
+			data.count == byteCount
+		else {
+			throw HeadlessSecureFileError.changedDuringRead
+		}
+		return HeadlessSecureFile(
+			data: data,
+			byteCount: byteCount,
+			canonicalPath: openedPath,
+			deviceID: UInt64(info.st_dev),
+			fileID: UInt64(info.st_ino),
+			sha256: SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+		)
 	}
 
 	private static func resolvedDescriptorPath(_ descriptor: Int32, fallbackPath: String) throws -> String {

@@ -1,4 +1,5 @@
 import Foundation
+import RepoPromptCodeMap
 import RepoPromptCore
 
 public actor PortableWorkspaceService {
@@ -8,6 +9,9 @@ public actor PortableWorkspaceService {
 	private let session: RepoPromptSession
 	private let contextBuilder: HeadlessWorkspaceContextBuilder
 	private let oracleWorkflow: HeadlessOracleWorkflow?
+	private let selectionIdentityResolutionHook: (@Sendable (String) throws -> Void)?
+	private let proEditCandidateResolutionHook: (@Sendable () throws -> Void)?
+	private let proEditTargetSnapshotHook: (@Sendable (String) throws -> Void)?
 
 	public init(
 		bootstrap: HeadlessWorkspaceBootstrapResult,
@@ -18,6 +22,9 @@ public actor PortableWorkspaceService {
 		self.pathIndex = pathIndex
 		self.session = bootstrap.session
 		self.contextBuilder = HeadlessWorkspaceContextBuilder(roots: pathIndex.roots)
+		self.selectionIdentityResolutionHook = nil
+		self.proEditCandidateResolutionHook = nil
+		self.proEditTargetSnapshotHook = nil
 		self.oracleWorkflow = oracleConfiguration.map { configuration in
 			HeadlessOracleWorkflow(
 				configuration: configuration,
@@ -30,13 +37,19 @@ public actor PortableWorkspaceService {
 		roots: [String],
 		session: RepoPromptSession,
 		fileManager: FileManager = .default,
-		oracleWorkflow: HeadlessOracleWorkflow?
+		oracleWorkflow: HeadlessOracleWorkflow?,
+		selectionIdentityResolutionHook: (@Sendable (String) throws -> Void)? = nil,
+		proEditCandidateResolutionHook: (@Sendable () throws -> Void)? = nil,
+		proEditTargetSnapshotHook: (@Sendable (String) throws -> Void)? = nil
 	) {
 		let pathIndex = HeadlessWorkspacePathIndex(roots: roots, fileManager: fileManager)
 		self.pathIndex = pathIndex
 		self.session = session
 		self.contextBuilder = HeadlessWorkspaceContextBuilder(roots: pathIndex.roots)
 		self.oracleWorkflow = oracleWorkflow
+		self.selectionIdentityResolutionHook = selectionIdentityResolutionHook
+		self.proEditCandidateResolutionHook = proEditCandidateResolutionHook
+		self.proEditTargetSnapshotHook = proEditTargetSnapshotHook
 	}
 
 	public func workspace() async -> PortableWorkspaceSummary {
@@ -116,7 +129,24 @@ public actor PortableWorkspaceService {
 		return PortableContextPreview(context)
 	}
 
-	public func generatePlan(instructions: String) async throws -> PortablePlanResult {
+	public func generatePlan(
+		instructions: String,
+		expectedContextContent: String? = nil
+	) async throws -> PortablePlanResult {
+		try await generate(.plan, instructions: instructions, expectedContextContent: expectedContextContent)
+	}
+
+	public func generateReview(
+		instructions: String,
+		expectedContextContent: String? = nil
+	) async throws -> PortablePlanResult {
+		try await generate(.review, instructions: instructions, expectedContextContent: expectedContextContent)
+	}
+
+	public func generateProEdit(
+		instructions: String,
+		expectedContextContent: String? = nil
+	) async throws -> PortableProEditGeneration {
 		try Task.checkCancellation()
 		let request: String
 		do {
@@ -124,12 +154,327 @@ public actor PortableWorkspaceService {
 		} catch let error as HeadlessOracleWorkflowError {
 			throw PortableWorkspaceServiceError.invalidParameters(error.message)
 		}
-		let (context, result) = try await executeOracle(
-			mode: .plan,
-			request: request,
+		guard let oracleWorkflow else {
+			throw PortableWorkspaceServiceError.oracleNotConfigured
+		}
+
+		let selectionSnapshot = await session.selectionStore.snapshot(tabID: nil)
+		let context = contextBuilder.build(
+			selection: selectionSnapshot,
 			maximumBytes: Self.contextByteBudget
 		)
-		return PortablePlanResult(context: context, result: result)
+		try Task.checkCancellation()
+		if let expectedContextContent, context.content != expectedContextContent {
+			throw PortableWorkspaceServiceError.staleContextPreview(PortableContextPreview(context))
+		}
+		guard context.isCompleteForProvider else {
+			throw PortableWorkspaceServiceError.incompleteContext(PortableContextPreview(context))
+		}
+
+		do {
+			let result = try await oracleWorkflow.execute(
+				mode: .proEdit,
+				request: request,
+				context: context
+			)
+			return PortableProEditGeneration(
+				selection: publicSelection(selectionSnapshot),
+				result: PortablePlanResult(context: context, result: result)
+			)
+		} catch let error as HeadlessOracleWorkflowError {
+			throw PortableWorkspaceServiceError.oracleFailed(code: error.code, message: error.message)
+		}
+	}
+
+	public func resolveProEditArtifact(
+		_ artifact: PortableProEditArtifact,
+		expectedGeneration: PortableProEditGeneration,
+		lane: PortablePlanLane.Name
+	) async throws -> PortableProEditPreflight {
+		try Task.checkCancellation()
+		let selectionSnapshot = await session.selectionStore.snapshot(tabID: nil)
+		let selection = publicSelection(selectionSnapshot)
+		guard selection == expectedGeneration.selection else {
+			throw PortableProEditPreflightError(
+				code: .staleSelection,
+				message: "Workspace selection changed after Pro Edit generation."
+			)
+		}
+		let currentContext = contextBuilder.build(
+			selection: selectionSnapshot,
+			maximumBytes: Self.contextByteBudget
+		)
+		guard currentContext.content == expectedGeneration.result.context.content,
+			currentContext.sourceEvidence == expectedGeneration.sourceEvidence
+		else {
+			throw PortableProEditPreflightError(
+				code: .staleContext,
+				message: "Workspace context identity or content changed after Pro Edit generation."
+			)
+		}
+		let laneAttribution = try Self.resolveLaneAttribution(
+			artifact: artifact,
+			generation: expectedGeneration,
+			requestedLane: lane
+		)
+		try proEditCandidateResolutionHook?()
+		let targets = try resolveProEditTargets(
+			artifact,
+			selectionSnapshot: selectionSnapshot,
+			expectedEvidence: expectedGeneration.sourceEvidence
+		)
+		return PortableProEditPreflight(
+			artifact: artifact,
+			selection: selection,
+			laneAttribution: laneAttribution,
+			targets: targets,
+			generation: expectedGeneration
+		)
+	}
+
+	public func inspectProEditArtifact(
+		_ artifact: PortableProEditArtifact
+	) async throws -> PortableProEditInspection {
+		try Task.checkCancellation()
+		let selectionSnapshot = await session.selectionStore.snapshot(tabID: nil)
+		let selection = publicSelection(selectionSnapshot)
+		let targets = try resolveProEditTargets(
+			artifact,
+			selectionSnapshot: selectionSnapshot,
+			expectedEvidence: nil
+		)
+		return PortableProEditInspection(
+			artifact: artifact,
+			selection: selection,
+			targets: targets
+		)
+	}
+
+	private func resolveProEditTargets(
+		_ artifact: PortableProEditArtifact,
+		selectionSnapshot: WorkspaceSelectionSnapshot,
+		expectedEvidence: [HeadlessWorkspaceContext.SourceEvidence]?
+	) throws -> [PortableProEditResolvedTarget] {
+		let candidates = try artifact.files.map { file in
+			(file: file, path: try pathIndex.canonicalProEditPath(file.path))
+		}
+
+		for firstIndex in candidates.indices {
+			for secondIndex in candidates.index(after: firstIndex) ..< candidates.endIndex {
+				let first = candidates[firstIndex]
+				let second = candidates[secondIndex]
+				if first.path.absolutePath == second.path.absolutePath {
+					let code: PortableProEditPreflightError.Code =
+						first.file.action == second.file.action ? .duplicateTarget : .overlappingTarget
+					throw PortableProEditPreflightError(
+						code: code,
+						path: second.file.path,
+						message: "Pro Edit targets '\(first.file.path)' and '\(second.file.path)' resolve to the same path."
+					)
+				}
+				if Self.pathsOverlap(first.path.absolutePath, second.path.absolutePath) {
+					throw PortableProEditPreflightError(
+						code: .overlappingTarget,
+						path: second.file.path,
+						message: "Pro Edit targets '\(first.file.path)' and '\(second.file.path)' overlap."
+					)
+				}
+			}
+		}
+
+		var selectionRoles: [String: ProEditSelectionRole] = [:]
+		var evidenceByPath: [String: HeadlessWorkspaceContext.SourceEvidence] = [:]
+		let currentSelectionIdentities = Set(
+			selectionSnapshot.selectedPaths.map(pathIndex.canonicalSelectionIdentity)
+		)
+		if let expectedEvidence {
+			for evidence in expectedEvidence {
+				if let existing = evidenceByPath[evidence.canonicalPath] {
+					guard existing.deviceID == evidence.deviceID,
+						existing.fileID == evidence.fileID,
+						existing.byteCount == evidence.byteCount,
+						existing.sha256 == evidence.sha256
+					else {
+						throw PortableProEditPreflightError(
+							code: .staleContext,
+							message: "Pro Edit generation contains conflicting source identities."
+						)
+					}
+					if evidence.role == .slice {
+						evidenceByPath[evidence.canonicalPath] = evidence
+					}
+				} else {
+					evidenceByPath[evidence.canonicalPath] = evidence
+				}
+			}
+		} else {
+			let slicedPaths = Set(selectionSnapshot.slices.keys)
+			for selectedPath in selectionSnapshot.selectedPaths {
+				let identity = pathIndex.canonicalSelectionIdentity(selectedPath)
+				try selectionIdentityResolutionHook?(selectedPath)
+				let role: ProEditSelectionRole = slicedPaths.contains(selectedPath) ? .slice : .full
+				if selectionRoles[identity] != .slice {
+					selectionRoles[identity] = role
+				}
+			}
+		}
+		var targets: [PortableProEditResolvedTarget] = []
+		targets.reserveCapacity(candidates.count)
+		for candidate in candidates {
+			try Task.checkCancellation()
+			let path = candidate.path.absolutePath
+			var isDirectory = ObjCBool(false)
+			let exists = pathIndex.fileManager.fileExists(atPath: path, isDirectory: &isDirectory)
+			let originalContent: String?
+			switch candidate.file.action {
+			case .delegateEdit:
+				guard exists else {
+					throw PortableProEditPreflightError(
+						code: .missingExistingTarget,
+						path: candidate.file.path,
+						message: "Pro Edit delegate-edit target does not exist: \(candidate.file.path)"
+					)
+				}
+				guard !isDirectory.boolValue else {
+					throw PortableProEditPreflightError(
+						code: .targetIsDirectory,
+						path: candidate.file.path,
+						message: "Pro Edit target is a directory, not a file: \(candidate.file.path)"
+					)
+				}
+				let evidence = evidenceByPath[path]
+				if expectedEvidence != nil {
+					guard let evidence else {
+						let retargetedSelection = currentSelectionIdentities.contains(path)
+						throw PortableProEditPreflightError(
+							code: retargetedSelection ? .staleContext : .targetNotSelected,
+							path: candidate.file.path,
+							message: retargetedSelection
+								? "Pro Edit selected target identity changed after generation: \(candidate.file.path)"
+								: "Pro Edit delegate-edit target was not a generated explicit selection: \(candidate.file.path)"
+						)
+					}
+					if evidence.role == .slice {
+						throw PortableProEditPreflightError(
+							code: .sliceDelegateUnsupported,
+							path: candidate.file.path,
+							message: "Pro Edit delegate-edit does not support slice-selected targets; promote the file to full selection before generating edits."
+						)
+					}
+				} else {
+					guard let selectionRole = selectionRoles[path] else {
+						throw PortableProEditPreflightError(
+							code: .targetNotSelected,
+							path: candidate.file.path,
+							message: "Pro Edit delegate-edit target is not explicitly selected: \(candidate.file.path)"
+						)
+					}
+					if selectionRole == .slice {
+						throw PortableProEditPreflightError(
+							code: .sliceDelegateUnsupported,
+							path: candidate.file.path,
+							message: "Pro Edit delegate-edit does not support slice-selected targets; promote the file to full selection before materializing edits."
+						)
+					}
+				}
+				try proEditTargetSnapshotHook?(candidate.file.path)
+				let secureFile: HeadlessSecureFile
+				do {
+					secureFile = try HeadlessSecureFileReader.read(
+						path: path,
+						roots: pathIndex.roots,
+						maximumBytes: PortableProEditArtifactParser.maximumFileContentBytes
+					)
+				} catch let error as HeadlessSecureFileError {
+					throw Self.preflightError(for: error, path: candidate.file.path)
+				} catch {
+					throw PortableProEditPreflightError(
+						code: .sourceReadFailed,
+						path: candidate.file.path,
+						message: "Could not read Pro Edit delegate-edit target: \(candidate.file.path)"
+					)
+				}
+				if let evidence, !evidence.matches(secureFile) {
+					throw PortableProEditPreflightError(
+						code: .staleContext,
+						path: candidate.file.path,
+						message: "Pro Edit target identity or content changed after generation: \(candidate.file.path)"
+					)
+				}
+				guard let content = String(data: secureFile.data, encoding: .utf8) else {
+					throw PortableProEditPreflightError(
+						code: .invalidUTF8,
+						path: candidate.file.path,
+						message: "Pro Edit delegate-edit target is not valid UTF-8: \(candidate.file.path)"
+					)
+				}
+				originalContent = content
+
+			case .create:
+				if exists {
+					let code: PortableProEditPreflightError.Code =
+						isDirectory.boolValue ? .targetIsDirectory : .createTargetAlreadyExists
+					throw PortableProEditPreflightError(
+						code: code,
+						path: candidate.file.path,
+						message: "Pro Edit create target already exists: \(candidate.file.path)"
+					)
+				}
+				let parent = (path as NSString).deletingLastPathComponent
+				var parentIsDirectory = ObjCBool(false)
+				guard pathIndex.fileManager.fileExists(atPath: parent, isDirectory: &parentIsDirectory) else {
+					throw PortableProEditPreflightError(
+						code: .createParentMissing,
+						path: candidate.file.path,
+						message: "Pro Edit create target parent does not exist: \(candidate.file.path)"
+					)
+				}
+				guard parentIsDirectory.boolValue else {
+					throw PortableProEditPreflightError(
+						code: .createParentNotDirectory,
+						path: candidate.file.path,
+						message: "Pro Edit create target parent is not a directory: \(candidate.file.path)"
+					)
+				}
+				originalContent = nil
+			}
+
+			targets.append(PortableProEditResolvedTarget(
+				file: candidate.file,
+				rootIndex: candidate.path.rootIndex,
+				relativePath: candidate.path.relativePath,
+				absolutePath: path,
+				displayPath: candidate.path.displayPath,
+				originalContent: originalContent
+			))
+		}
+		return targets
+	}
+
+	public func materializeProEditPreview(
+		_ preflight: PortableProEditPreflight
+	) async throws -> PortableProEditPreview {
+		try Task.checkCancellation()
+		guard preflight.laneAttribution.pairID == preflight.generation.result.pairID else {
+			throw PortableProEditPreflightError(
+				code: .artifactLaneMismatch,
+				message: "Pro Edit preflight attribution does not match its generation."
+			)
+		}
+		let refreshed = try await resolveProEditArtifact(
+			preflight.artifact,
+			expectedGeneration: preflight.generation,
+			lane: preflight.laneAttribution.lane
+		)
+		guard refreshed == preflight else {
+			throw PortableProEditPreflightError(
+				code: .staleContext,
+				message: "Pro Edit preflight changed before materialization."
+			)
+		}
+		return try await HeadlessProEditExecutionWorkflow(
+			oracleWorkflow: oracleWorkflow
+		).materialize(refreshed)
 	}
 
 	func applySelection(
@@ -142,19 +487,25 @@ public actor PortableWorkspaceService {
 		let store = await session.selectionStore
 		if case .get = operation { return await store.snapshot(tabID: nil) }
 
-		let entries = slices.map { WorkspaceSliceEntry(path: $0.path, ranges: $0.ranges) }
+		let resolvedPaths = try resolve(paths)
+		let entries = try slices.map {
+			WorkspaceSliceEntry(path: try pathIndex.validatedSelectionPath($0.path), ranges: $0.ranges)
+		}
+		if mode == .codemapOnly, operation == .set || operation == .add {
+			try validateCodemapPaths(resolvedPaths)
+		}
 		let mutation: WorkspaceSelectionMutation = switch (operation, mode) {
 		case (.clear, _): .clear
-		case (.set, .full): .replaceWithFullFiles(paths)
-		case (.set, .slices): .setSlices(entries)
-		case (.set, .codemapOnly): .replaceWithManualCodemaps(paths)
-		case (.add, .full): .addFullFiles(paths)
+		case (.set, .full): .replaceWithFullFiles(resolvedPaths)
+		case (.set, .slices): .replaceWithSlices(entries)
+		case (.set, .codemapOnly): .replaceWithManualCodemaps(resolvedPaths)
+		case (.add, .full): .addFullFiles(resolvedPaths)
 		case (.add, .slices): .addSlices(entries)
-		case (.add, .codemapOnly): .addManualCodemaps(paths)
-		case (.remove, .full): .removeFiles(paths)
+		case (.add, .codemapOnly): .addManualCodemaps(resolvedPaths)
+		case (.remove, .full): .removeFiles(resolvedPaths)
 		case (.remove, .slices): .subtractSlices(entries)
-		case (.remove, .codemapOnly): .removeManualCodemaps(paths)
-		case (.get, _): .clear
+		case (.remove, .codemapOnly): .removeManualCodemaps(resolvedPaths)
+		case (.get, _): preconditionFailure("get returns before mutation mapping")
 		}
 		do {
 			return try await store.mutate(for: nil, source: .headless) { selection in
@@ -179,16 +530,22 @@ public actor PortableWorkspaceService {
 		request: String,
 		maximumBytes: Int,
 		reviewDiff: String? = nil,
-		clarifyHandoff: String? = nil
+		clarifyHandoff: String? = nil,
+		expectedContextContent: String? = nil
 	) async throws -> (HeadlessWorkspaceContext, HeadlessOraclePairResult) {
 		guard let oracleWorkflow else {
 			throw PortableWorkspaceServiceError.oracleNotConfigured
 		}
 		let context = await renderContext(maximumBytes: maximumBytes)
+		try Task.checkCancellation()
+		if let expectedContextContent, context.content != expectedContextContent {
+			throw PortableWorkspaceServiceError.staleContextPreview(PortableContextPreview(context))
+		}
 		guard context.isCompleteForProvider else {
 			throw PortableWorkspaceServiceError.incompleteContext(PortableContextPreview(context))
 		}
 		do {
+			try Task.checkCancellation()
 			let result = try await oracleWorkflow.execute(
 				mode: mode,
 				request: request,
@@ -202,6 +559,27 @@ public actor PortableWorkspaceService {
 		}
 	}
 
+	private func generate(
+		_ mode: HeadlessOracleMode,
+		instructions: String,
+		expectedContextContent: String?
+	) async throws -> PortablePlanResult {
+		try Task.checkCancellation()
+		let request: String
+		do {
+			request = try HeadlessOracleWorkflow.validatedRequest(instructions)
+		} catch let error as HeadlessOracleWorkflowError {
+			throw PortableWorkspaceServiceError.invalidParameters(error.message)
+		}
+		let (context, result) = try await executeOracle(
+			mode: mode,
+			request: request,
+			maximumBytes: Self.contextByteBudget,
+			expectedContextContent: expectedContextContent
+		)
+		return PortablePlanResult(context: context, result: result)
+	}
+
 	private func resetSelection() async -> WorkspaceSelectionSnapshot {
 		let store = await session.selectionStore
 		return await store.mutate(for: nil, source: .headless) {
@@ -212,7 +590,11 @@ public actor PortableWorkspaceService {
 	private func publicSelection(_ snapshot: WorkspaceSelectionSnapshot) -> PortableWorkspaceSelection {
 		PortableWorkspaceSelection(
 			selectedFiles: snapshot.selectedPaths.map {
-				PortableWorkspaceFile(absolutePath: $0, displayPath: pathIndex.displayPath($0))
+				PortableWorkspaceFile(
+					absolutePath: $0,
+					displayPath: pathIndex.displayPath($0),
+					codemapSupported: PortableCodeMap.supports(path: $0)
+				)
 			},
 			sliceFileCount: snapshot.slices.count,
 			codemapFileCount: snapshot.manualCodemapPaths.count,
@@ -223,7 +605,11 @@ public actor PortableWorkspaceService {
 				)
 			},
 			manualCodemapFiles: snapshot.manualCodemapPaths.map {
-				PortableWorkspaceFile(absolutePath: $0, displayPath: pathIndex.displayPath($0))
+				PortableWorkspaceFile(
+					absolutePath: $0,
+					displayPath: pathIndex.displayPath($0),
+					codemapSupported: PortableCodeMap.supports(path: $0)
+				)
 			},
 			codemapAutoEnabled: snapshot.codemapAutoEnabled
 		)
@@ -236,11 +622,11 @@ public actor PortableWorkspaceService {
 		case .setSlices(let slices): .setSlices(try resolve(slices))
 		case .addSlices(let slices): .addSlices(try resolve(slices))
 		case .subtractSlices(let slices): .subtractSlices(try resolve(slices, allowEmptyRanges: true))
-		case .replaceWithManualCodemaps(let paths): .replaceWithManualCodemaps(try resolve(paths))
-		case .addManualCodemaps(let paths): .addManualCodemaps(try resolve(paths))
+		case .replaceWithManualCodemaps(let paths): .replaceWithManualCodemaps(try resolveCodemaps(paths))
+		case .addManualCodemaps(let paths): .addManualCodemaps(try resolveCodemaps(paths))
 		case .removeManualCodemaps(let paths): .removeManualCodemaps(try resolve(paths))
 		case .promoteToFull(let paths): .promoteToFull(try resolve(paths))
-		case .demoteToManualCodemap(let paths): .demoteToManualCodemap(try resolve(paths))
+		case .demoteToManualCodemap(let paths): .demoteToManualCodemap(try resolveCodemaps(paths))
 		case .removeFiles(let paths): .removeFiles(try resolve(paths))
 		case .clear: .clear
 		case .setAutomaticCodemapsEnabled(let enabled): .setAutomaticCodemapsEnabled(enabled)
@@ -249,6 +635,18 @@ public actor PortableWorkspaceService {
 
 	private func resolve(_ paths: [String]) throws -> [String] {
 		try paths.map(pathIndex.validatedSelectionPath)
+	}
+
+	private func resolveCodemaps(_ paths: [String]) throws -> [String] {
+		let resolved = try resolve(paths)
+		try validateCodemapPaths(resolved)
+		return resolved
+	}
+
+	private func validateCodemapPaths(_ paths: [String]) throws {
+		for path in paths where !PortableCodeMap.supports(path: path) {
+			throw PortableWorkspaceServiceError.invalidParameters("Codemap generation is unavailable for: \(pathIndex.displayPath(path))")
+		}
 	}
 
 	private func resolve(
@@ -292,6 +690,73 @@ public actor PortableWorkspaceService {
 			.invalidParameters("Each selected slice requires 1...256 ranges.")
 		case .totalSliceRangesExceeded:
 			.invalidParameters("Selection accepts at most 4096 total slice ranges.")
+		case .invalidSliceDescription:
+			.invalidParameters("Slice descriptions must not contain NUL and must not exceed 1024 UTF-8 bytes.")
+		}
+	}
+
+	private static func pathsOverlap(_ first: String, _ second: String) -> Bool {
+		first.hasPrefix(second + "/") || second.hasPrefix(first + "/")
+	}
+
+	private static func resolveLaneAttribution(
+		artifact: PortableProEditArtifact,
+		generation: PortableProEditGeneration,
+		requestedLane: PortablePlanLane.Name
+	) throws -> PortableProEditLaneAttribution {
+		let candidates = [generation.result.primary, generation.result.secondary]
+		guard let selected = candidates.first(where: { $0.name == requestedLane }),
+			selected.status == .completed,
+			let response = selected.response,
+			(try? PortableProEditArtifactParser.parse(response)) == artifact
+		else {
+			throw PortableProEditPreflightError(
+				code: .artifactLaneMismatch,
+				message: "The chosen Pro Edit artifact does not match the \(requestedLane.rawValue) generation lane."
+			)
+		}
+		return PortableProEditLaneAttribution(
+			pairID: generation.result.pairID,
+			lane: selected.name,
+			modelRawID: selected.modelRawID
+		)
+	}
+
+	private static func preflightError(
+		for error: HeadlessSecureFileError,
+		path: String
+	) -> PortableProEditPreflightError {
+		switch error {
+		case .outsideWorkspace:
+			PortableProEditPreflightError(
+				code: .outsideWorkspace,
+				path: path,
+				message: "Pro Edit target resolves outside the loaded workspace roots: \(path)"
+			)
+		case .notRegularFile:
+			PortableProEditPreflightError(
+				code: .targetIsDirectory,
+				path: path,
+				message: "Pro Edit target is not a regular file: \(path)"
+			)
+		case .tooLarge:
+			PortableProEditPreflightError(
+				code: .sourceTooLarge,
+				path: path,
+				message: "Pro Edit target exceeds \(PortableProEditArtifactParser.maximumFileContentBytes) bytes: \(path)"
+			)
+		case .openFailed:
+			PortableProEditPreflightError(
+				code: .sourceReadFailed,
+				path: path,
+				message: "Could not read Pro Edit target: \(path)"
+			)
+		case .changedDuringRead:
+			PortableProEditPreflightError(
+				code: .staleContext,
+				path: path,
+				message: "Pro Edit target changed while it was being read: \(path)"
+			)
 		}
 	}
 }
@@ -302,7 +767,12 @@ private extension PortableLineRange {
 	}
 }
 
-enum HeadlessSelectionOperation: Sendable {
+private enum ProEditSelectionRole: Equatable {
+	case full
+	case slice
+}
+
+enum HeadlessSelectionOperation: Sendable, Equatable {
 	case get
 	case set
 	case add
@@ -362,6 +832,111 @@ struct HeadlessWorkspacePathIndex {
 		return try resolvePath(rawPath, mustExist: false)
 	}
 
+	func canonicalSelectionIdentity(_ absolutePath: String) -> String {
+		URL(fileURLWithPath: absolutePath)
+			.resolvingSymlinksInPath()
+			.standardizedFileURL.path
+	}
+
+	func canonicalProEditPath(_ rawPath: String) throws -> HeadlessProEditCanonicalPath {
+		guard !rawPath.isEmpty,
+			rawPath.utf8.count <= Self.maximumPathBytes,
+			!rawPath.contains("\0"),
+			!rawPath.hasPrefix("/"),
+			!rawPath.hasPrefix("~")
+		else {
+			throw PortableProEditPreflightError(
+				code: .invalidPath,
+				path: rawPath,
+				message: "Pro Edit paths must be loaded-root-relative paths of 1...4096 UTF-8 bytes."
+			)
+		}
+
+		let qualified = parseRootQualifiedPath(rawPath)
+		if rawPath.hasPrefix("root["), qualified == nil {
+			throw PortableProEditPreflightError(
+				code: .invalidPath,
+				path: rawPath,
+				message: "Pro Edit path has an invalid root[n]: qualification: \(rawPath)"
+			)
+		}
+		if roots.count > 1, qualified == nil {
+			throw PortableProEditPreflightError(
+				code: .invalidPath,
+				path: rawPath,
+				message: "Pro Edit paths in multi-root workspaces require root[n]: qualification: \(rawPath)"
+			)
+		}
+		let rootIndex = qualified?.index ?? 0
+		guard roots.indices.contains(rootIndex) else {
+			throw PortableProEditPreflightError(
+				code: .invalidPath,
+				path: rawPath,
+				message: "Pro Edit path uses an unavailable workspace root: \(rawPath)"
+			)
+		}
+		let relativePath = qualified?.relativePath ?? rawPath
+		let components = relativePath.split(separator: "/", omittingEmptySubsequences: false)
+		guard !components.isEmpty,
+			components.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." })
+		else {
+			throw PortableProEditPreflightError(
+				code: .invalidPath,
+				path: rawPath,
+				message: "Pro Edit paths must not contain empty, dot, or parent components: \(rawPath)"
+			)
+		}
+
+		let root = roots[rootIndex]
+		let lexicalPath = (root as NSString).appendingPathComponent(relativePath)
+		let standardizedPath = (lexicalPath as NSString).standardizingPath
+		guard contains(standardizedPath, root: root) else {
+			throw PortableProEditPreflightError(
+				code: .outsideWorkspace,
+				path: rawPath,
+				message: "Pro Edit path is outside the loaded workspace root: \(rawPath)"
+			)
+		}
+		let resolvedPath = URL(fileURLWithPath: standardizedPath)
+			.resolvingSymlinksInPath()
+			.standardizedFileURL.path
+		let parentPath = (standardizedPath as NSString).deletingLastPathComponent
+		let resolvedParentPath = URL(fileURLWithPath: parentPath, isDirectory: true)
+			.resolvingSymlinksInPath()
+			.standardizedFileURL.path
+		let parentResolvedPath = (resolvedParentPath as NSString)
+			.appendingPathComponent((standardizedPath as NSString).lastPathComponent)
+		let absolutePath = fileManager.fileExists(atPath: standardizedPath)
+			? resolvedPath
+			: (parentResolvedPath as NSString).standardizingPath
+		guard contains(absolutePath, root: root) else {
+			throw PortableProEditPreflightError(
+				code: .outsideWorkspace,
+				path: rawPath,
+				message: "Pro Edit path resolves outside the loaded workspace root: \(rawPath)"
+			)
+		}
+
+		let rootPrefix = root.hasSuffix("/") ? root : root + "/"
+		guard absolutePath.hasPrefix(rootPrefix) else {
+			throw PortableProEditPreflightError(
+				code: .invalidPath,
+				path: rawPath,
+				message: "Pro Edit target must be a file below a loaded workspace root: \(rawPath)"
+			)
+		}
+		let canonicalRelativePath = String(absolutePath.dropFirst(rootPrefix.count))
+		let displayPath = roots.count > 1
+			? "root[\(rootIndex)]:\(canonicalRelativePath)"
+			: canonicalRelativePath
+		return HeadlessProEditCanonicalPath(
+			rootIndex: rootIndex,
+			relativePath: canonicalRelativePath,
+			absolutePath: absolutePath,
+			displayPath: displayPath
+		)
+	}
+
 	func displayPath(_ path: String) -> String {
 		for (index, root) in roots.enumerated().sorted(by: { $0.element.count > $1.element.count }) {
 			let prefixLabel = roots.count > 1 ? "root[\(index)]:" : ""
@@ -374,23 +949,27 @@ struct HeadlessWorkspacePathIndex {
 		return path
 	}
 
-	func allFiles() -> [String] {
+	func rootContainedFiles(limit: Int) throws -> (files: [String], truncated: Bool) {
+		try Task.checkCancellation()
+		guard limit > 0 else { return ([], true) }
 		var files: [String] = []
 		for root in roots {
+			try Task.checkCancellation()
 			guard let enumerator = fileManager.enumerator(atPath: root) else { continue }
 			for case let relative as String in enumerator {
+				try Task.checkCancellation()
 				let name = (relative as NSString).lastPathComponent
 				if Self.shouldSkipName(name) {
 					enumerator.skipDescendants()
 					continue
 				}
 				let path = (root as NSString).appendingPathComponent(relative)
-				var isDirectory = ObjCBool(false)
-				guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), !isDirectory.boolValue else { continue }
+				guard isRootContainedRegularFile(path) else { continue }
+				guard files.count < limit else { return (files, true) }
 				files.append(path)
 			}
 		}
-		return files
+		return (files, false)
 	}
 
 	func desktopFileEntries() throws -> [PortableWorkspaceFile] {
@@ -410,19 +989,70 @@ struct HeadlessWorkspacePathIndex {
 					continue
 				}
 				let path = (root as NSString).appendingPathComponent(relative)
-				guard isDesktopRegularFile(path), seen.insert(path).inserted else { continue }
+				guard isRootContainedRegularFile(path) else { continue }
 				candidates.append((path, relative))
 			}
 			let ignored = try hasGitignore ? ignoredGitPaths(root: root, relativePaths: candidates.map(\.relative)) : []
 			files.append(contentsOf: candidates.compactMap { candidate in
-				guard !ignored.contains(candidate.relative) else { return nil }
-				return PortableWorkspaceFile(absolutePath: candidate.path, displayPath: displayPath(candidate.path))
+				guard !ignored.contains(candidate.relative), seen.insert(candidate.path).inserted else { return nil }
+				return PortableWorkspaceFile(
+					absolutePath: candidate.path,
+					displayPath: displayPath(candidate.path),
+					codemapSupported: PortableCodeMap.supports(path: candidate.path)
+				)
 			})
 		}
 		try Task.checkCancellation()
 		return files.sorted {
 			let order = $0.displayPath.localizedCaseInsensitiveCompare($1.displayPath)
 			return order == .orderedSame ? $0.displayPath < $1.displayPath : order == .orderedAscending
+		}
+	}
+
+	func codemapCandidateEntries(limit: Int) throws -> [PortableWorkspaceFile] {
+		guard limit > 0 else { return [] }
+		let batchSize = 512
+		var seen = Set<String>()
+		var files: [PortableWorkspaceFile] = []
+
+		for root in roots {
+			try Task.checkCancellation()
+			guard let enumerator = fileManager.enumerator(atPath: root) else { continue }
+			var batch: [(path: String, relative: String)] = []
+
+			func flushBatch() throws -> Bool {
+				guard !batch.isEmpty else { return false }
+				let ignored = try ignoredGitPaths(root: root, relativePaths: batch.map(\.relative))
+				for candidate in batch where !ignored.contains(candidate.relative) {
+					guard seen.insert(candidate.path).inserted else { continue }
+					files.append(PortableWorkspaceFile(
+						absolutePath: candidate.path,
+						displayPath: displayPath(candidate.path),
+						codemapSupported: true
+					))
+					if files.count >= limit { return true }
+				}
+				batch.removeAll(keepingCapacity: true)
+				return false
+			}
+
+			for case let relative as String in enumerator {
+				try Task.checkCancellation()
+				let name = (relative as NSString).lastPathComponent
+				if Self.shouldSkipName(name) {
+					enumerator.skipDescendants()
+					continue
+				}
+				let path = (root as NSString).appendingPathComponent(relative)
+				guard PortableCodeMap.supports(path: path), isRootContainedRegularFile(path) else { continue }
+				batch.append((path, relative))
+				if batch.count >= batchSize, try flushBatch() { return files }
+			}
+			if try flushBatch() { return files }
+		}
+		try Task.checkCancellation()
+		return files.sorted {
+			$0.displayPath.utf8.lexicographicallyPrecedes($1.displayPath.utf8)
 		}
 	}
 
@@ -481,7 +1111,7 @@ struct HeadlessWorkspacePathIndex {
 		return Set(String(decoding: data, as: UTF8.self).split(separator: "\0").map(String.init))
 	}
 
-	private func isDesktopRegularFile(_ path: String) -> Bool {
+	private func isRootContainedRegularFile(_ path: String) -> Bool {
 		let resolved = URL(fileURLWithPath: path).resolvingSymlinksInPath().standardizedFileURL.path
 		guard roots.contains(where: { contains(resolved, root: $0) }),
 			let attributes = try? fileManager.attributesOfItem(atPath: resolved),
@@ -508,4 +1138,11 @@ struct HeadlessWorkspacePathIndex {
 		guard !relative.hasPrefix("/") else { return nil }
 		return (index, String(relative))
 	}
+}
+
+struct HeadlessProEditCanonicalPath {
+	let rootIndex: Int
+	let relativePath: String
+	let absolutePath: String
+	let displayPath: String
 }

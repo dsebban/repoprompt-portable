@@ -48,10 +48,23 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 			case .object(let selectionProperties)? = selectionSchema["properties"]
 		else { return XCTFail("Expected manage_selection properties") }
 		XCTAssertNotNil(selectionProperties["codemap_auto_enabled"])
+		XCTAssertTrue(selectionTool.description?.contains("described slice") == true)
+		XCTAssertTrue(selectionTool.description?.contains("automatic codemap") == true)
+		guard
+			case .object(let slicesSchema)? = selectionProperties["slices"],
+			case .object(let sliceItem)? = slicesSchema["items"],
+			case .object(let sliceProperties)? = sliceItem["properties"],
+			case .object(let rangesSchema)? = sliceProperties["ranges"],
+			case .object(let rangeItem)? = rangesSchema["items"],
+			case .object(let rangeProperties)? = rangeItem["properties"]
+		else { return XCTFail("Expected manage_selection slice range schema") }
+		XCTAssertNotNil(rangeProperties["description"])
 
 		let builder = try XCTUnwrap(tools.first { $0.name == "context_builder" })
 		XCTAssertTrue(builder.description?.contains("current explicit in-memory") == true)
-		XCTAssertTrue(builder.description?.contains("never discovers or changes selection") == true)
+		XCTAssertTrue(builder.description?.contains("derived automatic codemaps") == true)
+		XCTAssertTrue(builder.description?.contains("Rendering never changes selection") == true)
+		XCTAssertTrue(builder.description?.contains("same canonical context bytes") == true)
 		XCTAssertTrue(builder.description?.contains("manage_selection") == true)
 		let instructionsOnlyContract = "pro_edit returns instructions only and never writes, delegates, or applies."
 		XCTAssertTrue(builder.description?.contains(instructionsOnlyContract) == true)
@@ -188,16 +201,20 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 		XCTAssertFalse(content.contains("one\ntwo\nthree"))
 		XCTAssertLessThanOrEqual(content.utf8.count, 1_024)
 
-		_ = await catalog.call(name: "manage_selection", arguments: [
+		let codemapFile = root.appendingPathComponent("source.swift")
+		try "struct Source { let value: String }\n".write(to: codemapFile, atomically: true, encoding: .utf8)
+		let selectionResult = await catalog.call(name: "manage_selection", arguments: [
 			"op": .string("set"),
 			"mode": .string("codemap_only"),
-			"paths": .array([.string("source.txt")])
+			"paths": .array([.string("source.swift")])
 		])
+		XCTAssertEqual(selectionResult.isError, false)
 		let codemap = await catalog.call(name: "context_builder", arguments: ["instructions": .string("inspect")])
 		let codemapWorkspace = try XCTUnwrap(try json(codemap)["workspace_context"] as? [String: Any])
-		XCTAssertFalse((codemapWorkspace["content"] as? String)?.contains("one\ntwo\nthree") ?? true)
-		let omissions = try XCTUnwrap(codemapWorkspace["omissions"] as? [[String: Any]])
-		XCTAssertTrue(omissions.contains { $0["reason"] as? String == "auto_codemap_unsupported" })
+		let codemapContent = try XCTUnwrap(codemapWorkspace["content"] as? String)
+		XCTAssertTrue(codemapContent.contains("<file_map>\nFile: source.swift\nImports:"))
+		XCTAssertFalse(codemapContent.contains("struct Source {"))
+		XCTAssertEqual((codemapWorkspace["omissions"] as? [[String: Any]])?.count, 0)
 
 		for arguments: [String: Value] in [
 			["instructions": .string("inspect"), "response_type": .string("question")],
@@ -361,6 +378,120 @@ final class RepoPromptHeadlessCatalogOracleTests: XCTestCase {
 			let finalSelection = await bootstrap.session.selectionStore.snapshot(tabID: nil)
 			XCTAssertEqual(finalSelection, initialSelection)
 			XCTAssertEqual(try String(contentsOf: file, encoding: .utf8), "BUILDER_SELECTED_SENTINEL")
+		}
+	}
+
+	func testCanonicalCodemapBytesAreIdenticalInPreviewPlanAndReviewProviderRequests() async throws {
+		let root = try temporaryDirectory()
+		let fixtureRoot = try XCTUnwrap(Bundle.module.url(forResource: "Fixtures", withExtension: nil))
+			.appendingPathComponent("CodeMapParity")
+		let source = try String(
+			contentsOf: fixtureRoot.appendingPathComponent("Fixtures/swift/smoke.swift"),
+			encoding: .utf8
+		)
+		let file = root.appendingPathComponent("Dependency.swift")
+		try source.write(to: file, atomically: true, encoding: .utf8)
+		let golden = try String(
+			contentsOf: fixtureRoot.appendingPathComponent("Goldens/swift_smoke.codemap.txt"),
+			encoding: .utf8
+		).replacingOccurrences(of: "File: <ROOT>/swift/smoke.swift", with: "File: Dependency.swift")
+		let expectedContext = "<file_map>\n\(golden)\n</file_map>"
+		let bootstrap = try await HeadlessWorkspaceBootstrap.bootstrap(
+			options: HeadlessOptions(roots: [root.path], persist: false)
+		)
+		await bootstrap.session.selectionStore.persist(
+			.init(autoCodemapPaths: [file.path], codemapAutoEnabled: false),
+			for: nil,
+			source: .headless
+		)
+
+		for responseType in ["plan", "review"] {
+			let provider = CatalogOracleProvider(
+				primary: .response("primary \(responseType)"),
+				secondary: .response("secondary \(responseType)"),
+				autoRelease: true
+			)
+			let catalog = HeadlessToolCatalog(
+				roots: bootstrap.roots,
+				session: bootstrap.session,
+				router: bootstrap.router,
+				allowWrites: false,
+				oracleWorkflow: try workflow(provider: provider)
+			)
+			let result = await catalog.call(name: "context_builder", arguments: [
+				"instructions": .string("inspect"),
+				"response_type": .string(responseType)
+			])
+			XCTAssertEqual(result.isError, false)
+			let workspace = try XCTUnwrap(try json(result)["workspace_context"] as? [String: Any])
+			let previewBytes = Data(try XCTUnwrap(workspace["content"] as? String).utf8)
+			XCTAssertEqual(previewBytes, Data(expectedContext.utf8), responseType)
+			let requests = await provider.requests()
+			XCTAssertEqual(requests.count, 2)
+			XCTAssertEqual(requests[0].userPrompt, requests[1].userPrompt)
+			for request in requests {
+				XCTAssertEqual(request.userPrompt.components(separatedBy: expectedContext).count - 1, 1)
+				XCTAssertTrue(request.userPrompt.contains("utf8_bytes: \(expectedContext.utf8.count)\n\(expectedContext)"))
+			}
+		}
+	}
+
+	func testDerivedAutomaticCodemapBytesAreIdenticalInPreviewPlanAndReviewProviderRequests() async throws {
+		let root = try temporaryDirectory()
+		let consumer = root.appendingPathComponent("Consumer.swift")
+		let dependency = root.appendingPathComponent("Dependency.swift")
+		try "struct Consumer { let dependency: Dependency }\n".write(to: consumer, atomically: true, encoding: .utf8)
+		try "struct Dependency { let value: String }\n".write(to: dependency, atomically: true, encoding: .utf8)
+		let bootstrap = try await HeadlessWorkspaceBootstrap.bootstrap(
+			options: HeadlessOptions(roots: [root.path], persist: false)
+		)
+		await bootstrap.session.selectionStore.persist(
+			.init(selectedPaths: [consumer.path], codemapAutoEnabled: true),
+			for: nil,
+			source: .headless
+		)
+		let service = PortableWorkspaceService(
+			roots: bootstrap.roots,
+			session: bootstrap.session,
+			oracleWorkflow: nil
+		)
+		let preview = try await service.previewContext()
+		let expectedContext = preview.content
+		XCTAssertEqual(preview.automaticCodemapPaths, ["Dependency.swift"])
+		XCTAssertEqual(expectedContext.components(separatedBy: "File: Dependency.swift").count - 1, 1)
+
+		for responseType in ["plan", "review"] {
+			let provider = CatalogOracleProvider(
+				primary: .response("primary \(responseType)"),
+				secondary: .response("secondary \(responseType)"),
+				autoRelease: true
+			)
+			let catalog = HeadlessToolCatalog(
+				roots: bootstrap.roots,
+				session: bootstrap.session,
+				router: bootstrap.router,
+				allowWrites: false,
+				oracleWorkflow: try workflow(provider: provider)
+			)
+			let result = await catalog.call(name: "context_builder", arguments: [
+				"instructions": .string("inspect"),
+				"response_type": .string(responseType)
+			])
+			XCTAssertEqual(result.isError, false)
+			let workspace = try XCTUnwrap(try json(result)["workspace_context"] as? [String: Any])
+			XCTAssertEqual(Data(try XCTUnwrap(workspace["content"] as? String).utf8), Data(expectedContext.utf8))
+			XCTAssertEqual(workspace["automatic_codemap_paths"] as? [String], ["Dependency.swift"])
+			let resolved = try XCTUnwrap(workspace["resolved_codemaps"] as? [[String: Any]])
+			XCTAssertTrue(resolved.contains { $0["path"] as? String == "Dependency.swift" && $0["source"] as? String == "automatic" })
+
+			let requests = await provider.requests()
+			XCTAssertEqual(requests.count, 2)
+			XCTAssertEqual(requests[0].userPrompt, requests[1].userPrompt)
+			for request in requests {
+				XCTAssertEqual(request.userPrompt.components(separatedBy: expectedContext).count - 1, 1)
+				XCTAssertTrue(request.userPrompt.contains("utf8_bytes: \(expectedContext.utf8.count)\n\(expectedContext)"))
+				XCTAssertEqual(request.userPrompt.components(separatedBy: "File: Dependency.swift").count - 1, 1)
+			}
 		}
 	}
 

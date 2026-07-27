@@ -15,12 +15,14 @@ public struct PortableWorkspaceSummary: Equatable, Sendable {
 public struct PortableWorkspaceFile: Identifiable, Hashable, Sendable {
 	public let absolutePath: String
 	public let displayPath: String
+	public let codemapSupported: Bool
 
 	public var id: String { absolutePath }
 
-	public init(absolutePath: String, displayPath: String) {
+	public init(absolutePath: String, displayPath: String, codemapSupported: Bool = false) {
 		self.absolutePath = absolutePath
 		self.displayPath = displayPath
+		self.codemapSupported = codemapSupported
 	}
 }
 
@@ -95,10 +97,17 @@ public struct PortableContextEntry: Equatable, Sendable {
 	public enum Kind: String, Sendable {
 		case full
 		case slice
+		case codemap
+	}
+
+	public enum CodemapSource: String, Sendable {
+		case manual
+		case automatic
 	}
 
 	public let displayPath: String
 	public let kind: Kind
+	public let codemapSource: CodemapSource?
 	public let startLine: Int?
 	public let endLine: Int?
 	public let byteCount: Int
@@ -106,12 +115,14 @@ public struct PortableContextEntry: Equatable, Sendable {
 	public init(
 		displayPath: String,
 		kind: Kind,
+		codemapSource: CodemapSource? = nil,
 		startLine: Int?,
 		endLine: Int?,
 		byteCount: Int
 	) {
 		self.displayPath = displayPath
 		self.kind = kind
+		self.codemapSource = codemapSource
 		self.startLine = startLine
 		self.endLine = endLine
 		self.byteCount = byteCount
@@ -132,6 +143,10 @@ public struct PortableContextOmission: Equatable, Sendable {
 		case orphanSlice = "orphan_slice"
 		case invalidSlice = "invalid_slice"
 		case autoCodemapUnsupported = "auto_codemap_unsupported"
+		case codemapLanguageUnsupported = "codemap_language_unsupported"
+		case codemapNoSymbols = "codemap_no_symbols"
+		case codemapParseFailed = "codemap_parse_failed"
+		case codemapIndexLimitExceeded = "codemap_index_limit_exceeded"
 	}
 
 	public let displayPath: String
@@ -146,16 +161,19 @@ public struct PortableContextOmission: Equatable, Sendable {
 public struct PortableContextPreview: Equatable, Sendable {
 	public let entries: [PortableContextEntry]
 	public let omissions: [PortableContextOmission]
+	public let automaticCodemapPaths: [String]
 	public let content: String
 	public let contentByteCount: Int
 	public let maximumByteCount: Int
 	public let truncated: Bool
 	public let omittedRootCount: Int
 	public let isCompleteForProvider: Bool
+	let proEditSourceEvidence: [HeadlessWorkspaceContext.SourceEvidence]
 
 	public init(
 		entries: [PortableContextEntry],
 		omissions: [PortableContextOmission],
+		automaticCodemapPaths: [String] = [],
 		content: String,
 		contentByteCount: Int,
 		maximumByteCount: Int,
@@ -165,12 +183,14 @@ public struct PortableContextPreview: Equatable, Sendable {
 	) {
 		self.entries = entries
 		self.omissions = omissions
+		self.automaticCodemapPaths = automaticCodemapPaths
 		self.content = content
 		self.contentByteCount = contentByteCount
 		self.maximumByteCount = maximumByteCount
 		self.truncated = truncated
 		self.omittedRootCount = omittedRootCount
 		self.isCompleteForProvider = isCompleteForProvider
+		self.proEditSourceEvidence = []
 	}
 }
 
@@ -243,6 +263,7 @@ public enum PortableWorkspaceServiceError: Error, Equatable, Sendable {
 	case pathNotFound(String)
 	case oracleNotConfigured
 	case incompleteContext(PortableContextPreview)
+	case staleContextPreview(PortableContextPreview)
 	case oracleFailed(code: String, message: String)
 
 	public var code: String {
@@ -252,6 +273,7 @@ public enum PortableWorkspaceServiceError: Error, Equatable, Sendable {
 		case .pathNotFound: return "not_found"
 		case .oracleNotConfigured: return "oracle_not_configured"
 		case .incompleteContext: return "incomplete_workspace_context"
+		case .staleContextPreview: return "stale_context_preview"
 		case .oracleFailed(let code, _): return code
 		}
 	}
@@ -266,6 +288,8 @@ public enum PortableWorkspaceServiceError: Error, Equatable, Sendable {
 			return "Oracle is not configured. Set the required REPOPROMPT_ORACLE_* environment variables."
 		case .incompleteContext:
 			return "Selected workspace context is incomplete; inspect context_builder clarify omission metadata before retrying."
+		case .staleContextPreview:
+			return "Workspace context changed after preview; inspect the refreshed preview before retrying."
 		case .oracleFailed(_, let message):
 			return message
 		}
@@ -282,6 +306,7 @@ extension PortableContextPreview {
 			PortableContextEntry(
 				displayPath: entry.path,
 				kind: PortableContextEntry.Kind(entry.kind),
+				codemapSource: entry.codemapSource.map(PortableContextEntry.CodemapSource.init),
 				startLine: entry.startLine,
 				endLine: entry.endLine,
 				byteCount: entry.byteCount
@@ -293,12 +318,14 @@ extension PortableContextPreview {
 				reason: PortableContextOmission.Reason(omission.reason)
 			)
 		}
+		automaticCodemapPaths = context.automaticCodemapPaths
 		content = context.content
 		contentByteCount = context.contentByteCount
 		maximumByteCount = context.maximumByteCount
 		truncated = context.truncated
 		omittedRootCount = context.omittedRootCount
 		isCompleteForProvider = context.isCompleteForProvider
+		proEditSourceEvidence = context.sourceEvidence
 	}
 }
 
@@ -321,7 +348,14 @@ private extension PortableContextEntry.Kind {
 		self = switch kind {
 		case .selectedFull: .full
 		case .selectedSlice: .slice
+		case .selectedCodemap: .codemap
 		}
+	}
+}
+
+private extension PortableContextEntry.CodemapSource {
+	init(_ source: HeadlessWorkspaceContext.Entry.CodemapSource) {
+		self = source == .manual ? .manual : .automatic
 	}
 }
 
@@ -340,6 +374,10 @@ private extension PortableContextOmission.Reason {
 		case .orphanSlice: .orphanSlice
 		case .invalidSlice: .invalidSlice
 		case .autoCodemapUnsupported: .autoCodemapUnsupported
+		case .codemapLanguageUnsupported: .codemapLanguageUnsupported
+		case .codemapNoSymbols: .codemapNoSymbols
+		case .codemapParseFailed: .codemapParseFailed
+		case .codemapIndexLimitExceeded: .codemapIndexLimitExceeded
 		}
 	}
 }
