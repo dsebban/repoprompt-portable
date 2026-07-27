@@ -4,6 +4,8 @@ WORKDIR /source
 
 COPY Package.swift Package.resolved ./
 COPY RepoPromptCore ./RepoPromptCore
+COPY RepoPromptCodeMap ./RepoPromptCodeMap
+COPY TreeSitterScannerSupport ./TreeSitterScannerSupport
 COPY RepoPromptHeadless ./RepoPromptHeadless
 COPY RepoPromptHeadlessServer ./RepoPromptHeadlessServer
 COPY RepoPromptPortableCLI ./RepoPromptPortableCLI

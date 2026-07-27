@@ -6,6 +6,10 @@
 !Package.resolved
 !RepoPromptCore/
 !RepoPromptCore/**
+!RepoPromptCodeMap/
+!RepoPromptCodeMap/**
+!TreeSitterScannerSupport/
+!TreeSitterScannerSupport/**
 !RepoPromptHeadless/
 !RepoPromptHeadless/**
 !RepoPromptHeadlessServer/

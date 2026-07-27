@@ -2,7 +2,7 @@
 
 Portable RepoPrompt context building and dual-Oracle MCP for Linux and containers, plus an isolated Linux GTK desktop.
 
-The image contains both `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL command runner. It renders only the caller's explicit file/slice selection and sends mandatory concurrent Primary and Secondary requests for provider-backed work. It has no Apple UI dependency.
+The image contains both `repoprompt-headless`, a read-only stdio MCP server, and `repoprompt-portable-cli`, a direct JSONL command runner. It canonically renders the caller's explicit full/slice/manual-codemap selection plus disclosed derived automatic codemaps when enabled, then sends mandatory concurrent Primary and Secondary requests for provider-backed work. It has no Apple UI dependency.
 
 Third-party coding agents can install or load the repository skill at
 `.agents/skills/repoprompt-portable-workflows/SKILL.md`. It includes transport
@@ -15,21 +15,21 @@ Portable software `0.3.0` advertises tool-schema version `1.1.0` on every tool i
 
 ## Tool contract
 
-`manage_selection` is the only selection mutation interface.
+`manage_selection` is the only selection mutation interface. Its compatible schema `1.1.0` details include optional slice-range descriptions, `codemap_auto_enabled`, detailed slice/manual-codemap output, and disclosure of derived automatic codemaps without mutating explicit selection.
 
-- `context_builder` accepts `clarify|plan|review|pro_edit`. Clarify is local; the other modes use the configured Oracle provider.
+- `context_builder` accepts `clarify|plan|review|pro_edit`. Clarify is local; the other modes use the configured Oracle provider, and every mode receives the same canonical selection package.
 - `oracle_send` accepts `chat|question|plan|review` and always snapshots and attaches the current explicit selection; there is no context-free mode.
 - Provider-backed calls fail with `incomplete_workspace_context` before HTTP if any selected source is omitted or truncated. Use local clarify to inspect omissions.
 - Review mode may include a caller-supplied `review_diff` of at most 262144 UTF-8 bytes.
 - `oracle_send` may include prior clarify output as `clarify_handoff`, up to 1048576 UTF-8 bytes.
 - Workspace source, review diffs, and clarify handoffs are labeled untrusted evidence and disclosed unchanged to both lanes. Only the user-request section is instruction-bearing.
-- Pro Edit returns two independent opaque Pro Edit v1 instruction artifacts under `oracle_results.primary.response` and `.secondary.response`; top-level `response` projects Primary only. Portable does not parse, validate, delegate, apply, write, persist, or certify either artifact.
+- Headless Pro Edit returns two independent opaque Pro Edit v1 instruction artifacts under `oracle_results.primary.response` and `.secondary.response`; top-level `response` projects Primary only. The MCP catalog and direct JSONL CLI do not parse, validate, delegate, apply, write, persist, or certify either artifact.
 
 See [the architecture and configuration guide](docs/architecture/portable-oracle-mcp.md) for the complete schema, provider metadata/error fields, and security boundary.
 
 ## Linux desktop
 
-`LinuxDesktop/` is an isolated Swift package that builds the native `repoprompt-linux-desktop` GTK 4 application. It reuses the typed `RepoPromptHeadless` service in-process without adding SwiftCrossUI or a desktop backend to the root package graph.
+`LinuxDesktop/` is an isolated Swift package that builds the native `repoprompt-linux-desktop` GTK 4 application. It reuses the typed `RepoPromptHeadless` service in-process without adding SwiftCrossUI or a desktop backend to the root package graph. The flattened file list supports explicit full, described-slice, and manual-codemap modes, an automatic-codemap toggle, canonical preview metadata, and separate dual-lane Plan and Review actions.
 
 Ubuntu build and smoke prerequisites:
 
@@ -104,7 +104,7 @@ repoprompt-portable-cli --root "$PWD" \
 
 The Pro Edit v1 generation contract requests exactly one `<chatName="..."/>`, one `<Plan>...</Plan>`, and zero or more `<file>` blocks whose only actions are `delegate edit` for selected existing files or `create` for genuinely new files inside a loaded root. In multi-root workspaces, delegated paths must preserve the exact selected `root[n]:relative/path`; single-root delegated paths preserve the exact selected relative path. Missing required existing files belong in `<Plan>` only, with no fabricated file block.
 
-Treat generated paths and content as untrusted. Defensively review both lanes against the selection, choose deliberately, then implement and test with the calling agent's native tools. Portable performs no edit execution or application and has no `agent_run`, write, or orchestration tool.
+Treat generated paths and content as untrusted. Defensively review both lanes against the selection, choose deliberately, then implement and test with the calling agent's native tools. The headless MCP/CLI products perform no edit execution or application and have no `agent_run`, write, or orchestration tool. The separately packaged native desktop can strictly parse and preflight a deliberately chosen lane, materialize an ordered per-file preview, and write only when the user explicitly chooses **Apply & Save**; that desktop transaction is not exposed as a headless tool.
 
 The CLI accepts exact portable tool names and JSON-object arguments. Separate processes do not share selection. `--export-jsonl <new-path>` preserves stdout and, only after all commands succeed, atomically creates a private mode-0600 JSONL artifact. Existing files and symlinks are refused; exports are never overwritten. Because exports can contain selected source and both generated artifacts, write them to a private, separately mounted output directory outside the read-only workspace.
 

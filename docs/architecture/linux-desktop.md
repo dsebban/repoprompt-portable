@@ -2,9 +2,9 @@
 
 ## Scope
 
-`LinuxDesktop/` is a separate SwiftPM package for the native GTK 4 product `repoprompt-linux-desktop`. The same executable supports explicit macOS QA with `--macos`, where SwiftCrossUI selects its native AppKit backend; this does not add Apple dependencies to the Linux build graph. It implements the existing minimum workflow: open configured workspace roots, search a flattened file list, manage explicit full-file selection, preview selected context, and generate a dual-lane plan when Oracle environment configuration is present.
+`LinuxDesktop/` is a separate SwiftPM package for the native GTK 4 product `repoprompt-linux-desktop`. The same executable supports explicit macOS QA with `--macos`, where SwiftCrossUI selects its native AppKit backend; this does not add Apple dependencies to the Linux build graph. Its Classic-inspired workspace keeps a compact explorer beside Compose, Selected Files, Context Builder, paired Oracle, and Pro Edit panels. It opens configured workspace roots, searches a flattened file list, focuses a file, chooses full/slice/manual-codemap selection, edits described line ranges, uses derived automatic codemaps, previews canonical context metadata/content, and generates a dual-lane plan, review, or Pro Edit result when Oracle environment configuration is present.
 
-The application window title is `RepoPrompt Portable`. The desktop is read-only and keeps workspace, instructions, selection, context, and Oracle results in process memory.
+The application window title is `RepoPrompt Portable`. Normal browsing, selection, context, and Oracle generation are read-only. The desktop has one deliberately separate write path: after a user chooses either the Primary or Secondary Pro Edit artifact, strict parsing and preflight produce a materialized per-file preview, and only the explicit **Apply & Save** action may call the desktop transaction writer. Instructions, selection, context, Oracle results, and unapplied previews remain in process memory.
 
 ## Package and dependency boundary
 
@@ -26,7 +26,11 @@ RepoPromptLinuxDesktopKit
 └── SwiftCrossUI
 ```
 
-`PortableWorkspaceService` is the typed in-process boundary. Its intended public surface is `workspace()`, cancellable `files()`, `selection()`, `addFiles(_:)`, `removeFiles(_:)`, `clearSelection()`, cancellable `previewContext()`, and fixed-mode `generatePlan(instructions:)`, together with the `PortableWorkspace*`, `PortableContext*`, and `PortablePlan*` value models. Enumeration/path helpers, selection editing, context rendering, and Oracle execution remain internal implementation details. The service shares the existing bootstrap, session selection store, secure context builder, and concurrent Oracle workflow with the MCP catalog; the desktop-only inventory filters resolved paths outside the roots and non-regular targets without changing MCP `file_search`. No MCP/JSON subprocess or fallback transport is used. SwiftCrossUI, GTK, and desktop sources remain outside the root dependency graph and `Dockerfile.headless`.
+`PortableWorkspaceService` is the typed in-process boundary. The desktop uses `workspace()`, cancellable `files()`, `selection()`, `mutateSelection(_:)` and its full/slice/manual-codemap/automatic-toggle conveniences, cancellable `previewContext()`, `generatePlan(instructions:)`, `generateReview(instructions:)`, `generateProEdit(instructions:)`, strict `resolveProEditArtifact`, and preview-only `materializeProEditPreview`, together with their typed value models. Selection transition rules, path validation, canonical rendering, codemap extraction, and Oracle execution remain shared headless implementation details. The service shares the existing bootstrap, session selection store, context builder, and concurrent Oracle workflow with the MCP catalog; the desktop-only inventory filters resolved paths outside the roots and non-regular targets without changing MCP `file_search`. No MCP/JSON subprocess or fallback transport is used. SwiftCrossUI, GTK, and desktop sources remain outside the root dependency graph and `Dockerfile.headless`.
+
+`DesktopProEditService` is the desktop-only mutation boundary. A materialization captures the exact workspace, selection, canonical paths, source bytes, metadata, and proposed bytes in a single current session. The UI renders the session's ordered proposals, statuses, replacement diffs, and original-to-proposed content before enabling **Apply & Save**. Apply revalidates the session and every target, stages same-directory files, performs the transaction, rolls back a partial commit, and returns the exact applied paths. Parse, preflight, materialization, cancellation, and reset never write files. `RootShellView` never writes directly; it can mutate the workspace only by calling `DesktopProEditService.apply(session.id)`.
+
+The desktop write boundary is not linked into `HeadlessToolCatalog`. The seven MCP tools and the direct JSONL CLI remain read-only: their `pro_edit` result is still two independent opaque artifacts, and neither surface can materialize or apply a desktop session.
 
 SwiftPM resolves packages across platforms, so `LinuxDesktop/Package.resolved` can contain pins used by non-Linux SwiftCrossUI backends. Those pins do not prove that a backend is compiled. `Scripts/verify_linux_desktop_graph.py` checks the declared graphs, compiled modules, and final Linux linkage instead.
 
@@ -46,7 +50,7 @@ Xvfb smoke dependencies:
 sudo apt-get install --yes --no-install-recommends xvfb xauth x11-utils
 ```
 
-Running the binary requires Git for hierarchical `.gitignore` evaluation, GTK 4, and an X11 or Wayland display. Provider-free preview needs no API key. Generate Plan uses the same `OPENCODE_API_KEY` or complete `REPOPROMPT_ORACLE_*` environment configuration as the headless products.
+Running the binary requires Git for hierarchical `.gitignore` evaluation, GTK 4, and an X11 or Wayland display. Provider-free canonical preview, including manual and derived automatic codemaps, needs no API key. Generate Plan, Generate Review, and Pro Edit use the same `OPENCODE_API_KEY` or complete `REPOPROMPT_ORACLE_*` environment configuration as the headless products.
 
 ## Build, test, run, and verify
 
@@ -98,8 +102,8 @@ The existing headless container, `Dockerfile.headless`, `publish-container.yml`,
 
 - Shipping Apple frameworks or UI backends in the Linux build/release graph; AppKit is used only by the explicit `--macos` QA launch.
 - Native file trees or file/folder pickers.
-- Rich editing, syntax highlighting, git/apply operations, or write tools.
-- Tabs, presets, Agent Mode, persistence, or desktop settings.
-- Clipboard integration or pixel parity with Classic/CE.
+- General-purpose editing, syntax highlighting, review-diff discovery, git operations, or write tools outside the explicit Pro Edit preview/apply transaction.
+- Presets, Agent Mode, persistence, or mutable desktop settings.
+- Clipboard integration or pixel-identical parity with Classic/CE. The supported workflow should retain Classic's dense IDE hierarchy and interaction model where SwiftCrossUI permits it.
 - Alternate UI backends, fallback transports, or feature flags.
 - Desktop containers or native release packages.
