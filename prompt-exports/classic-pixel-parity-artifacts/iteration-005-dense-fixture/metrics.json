@@ -1,0 +1,227 @@
+{
+  "aggregate_score": 75.928979825141,
+  "aggregate_weights": {
+    "builder_bottom": 0.125,
+    "full": 0.5,
+    "instructions": 0.125,
+    "sidebar": 0.125,
+    "top": 0.125
+  },
+  "baseline_samples": {
+    "aggregate_median": 75.928979825141,
+    "aggregate_population_variance": 0.0,
+    "aggregate_range": 0.0,
+    "aggregate_scores": [
+      75.928979825141,
+      75.928979825141,
+      75.928979825141
+    ],
+    "count": 3
+  },
+  "boundaries": {
+    "instructions_y": {
+      "candidate_delta": -16,
+      "candidate_detected": 590,
+      "expected": 650,
+      "target_detected": 606
+    },
+    "sidebar_x": {
+      "candidate_delta": -10,
+      "candidate_detected": 460,
+      "expected": 473,
+      "target_detected": 470
+    },
+    "top_y": {
+      "candidate_delta": 56,
+      "candidate_detected": 226,
+      "expected": 170,
+      "target_detected": 170
+    }
+  },
+  "candidate_normalized_sha256": "db34ffb6b94a882c69b2159458c55744468cac4c48a53f4f6ee3bab3390b8a3e",
+  "candidate_raw_sha256": "c1da04af45de89dd26871417716d1891f8c280ceaa23281a3383f8ca7b4ef9ff",
+  "canvas": [
+    1956,
+    1252
+  ],
+  "iteration": 0,
+  "mask_policy": "disjoint-right-bands-v1",
+  "metric_id": "rgb-nmae-gaussian-ssim-v1",
+  "normalization_id": "srgb-aspect-fill-lanczos-v1",
+  "pixel_perfect": false,
+  "regions": {
+    "builder_bottom": {
+      "box": [
+        473,
+        650,
+        1956,
+        1252
+      ],
+      "nmae": 0.06352862461,
+      "pixels": 892766,
+      "score": 80.827980910991,
+      "ssim": 0.68008824283
+    },
+    "full": {
+      "box": [
+        0,
+        0,
+        1956,
+        1252
+      ],
+      "nmae": 0.086518156485,
+      "pixels": 2448912,
+      "score": 75.76400171985,
+      "ssim": 0.601798190882
+    },
+    "instructions": {
+      "box": [
+        473,
+        170,
+        1956,
+        650
+      ],
+      "nmae": 0.10583460409,
+      "pixels": 711840,
+      "score": 70.656590323768,
+      "ssim": 0.518966410565
+    },
+    "sidebar": {
+      "box": [
+        0,
+        0,
+        473,
+        1252
+      ],
+      "nmae": 0.111658472286,
+      "pixels": 592196,
+      "score": 72.150270332616,
+      "ssim": 0.554663878938
+    },
+    "top": {
+      "box": [
+        473,
+        0,
+        1956,
+        170
+      ],
+      "nmae": 0.05433402216,
+      "pixels": 252110,
+      "score": 80.740990154354,
+      "ssim": 0.669153825247
+    }
+  },
+  "run_id": "iteration-005-dense-fixture",
+  "sample_variation": {
+    "aggregate": {
+      "aggregate_median": 75.928979825141,
+      "aggregate_population_variance": 0.0,
+      "aggregate_range": 0.0,
+      "aggregate_scores": [
+        75.928979825141,
+        75.928979825141,
+        75.928979825141
+      ],
+      "count": 3
+    },
+    "builder_bottom": {
+      "nmae": {
+        "median": 0.06352862461,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "score": {
+        "median": 80.827980910991,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "ssim": {
+        "median": 0.68008824283,
+        "population_variance": 0.0,
+        "range": 0.0
+      }
+    },
+    "full": {
+      "nmae": {
+        "median": 0.086518156485,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "score": {
+        "median": 75.76400171985,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "ssim": {
+        "median": 0.601798190882,
+        "population_variance": 0.0,
+        "range": 0.0
+      }
+    },
+    "instructions": {
+      "nmae": {
+        "median": 0.10583460409,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "score": {
+        "median": 70.656590323768,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "ssim": {
+        "median": 0.518966410565,
+        "population_variance": 0.0,
+        "range": 0.0
+      }
+    },
+    "sidebar": {
+      "nmae": {
+        "median": 0.111658472286,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "score": {
+        "median": 72.150270332616,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "ssim": {
+        "median": 0.554663878938,
+        "population_variance": 0.0,
+        "range": 0.0
+      }
+    },
+    "top": {
+      "nmae": {
+        "median": 0.05433402216,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "score": {
+        "median": 80.740990154354,
+        "population_variance": 0.0,
+        "range": 0.0
+      },
+      "ssim": {
+        "median": 0.669153825247,
+        "population_variance": 0.0,
+        "range": 0.0
+      }
+    }
+  },
+  "schema_version": 1,
+  "ssim": {
+    "c1": 0.0001,
+    "c2": 0.0009,
+    "channels": "rgb-mean",
+    "covariance": "population",
+    "kernel": "gaussian-11x11",
+    "padding": "reflect",
+    "sigma": 1.5
+  },
+  "target_normalized_sha256": "aa60bc85739a13ade2e3b420c5cd26976b39acc0160943772a35a97bc889da8b",
+  "target_path": "docs/visual-contracts/classic-parity-target-v1.png",
+  "target_raw_sha256": "07ec2644bcbf4f3a9f4eec7aa56d53404d8cbd933b75f7f490e11a25339ba916",
+  "worst_region": "instructions"
+}

@@ -1,0 +1,1318 @@
+{
+  "binary": {
+    "nested_lockfile_sha256": "4168e8036facce94634b479e6c98265d504a9d31797840c47cec6daf206341f7",
+    "path": "/Users/danielsivan/dev/repoprompt-portable/LinuxDesktop/.build/arm64-apple-macosx/release/repoprompt-linux-desktop",
+    "sha256": "b3c6456867fbdfa073cdeb22b1dd39ebc43a349b78788859f90bc26891bec3ef",
+    "swift_cross_ui_revision": "a6d206370812e3b9edba259d167e848892c5013d"
+  },
+  "captures": [
+    {
+      "ax_frame": {
+        "height": 949,
+        "width": 1504,
+        "x": -1508,
+        "y": 33
+      },
+      "backing_scale": 2,
+      "captured_at": "2026-07-27T05:19:15Z",
+      "cg_frame": {
+        "height": 949,
+        "width": 1504,
+        "x": -1508,
+        "y": 33
+      },
+      "pid": 23647,
+      "raw_pixels": [
+        3008,
+        1898
+      ],
+      "schema_version": 1,
+      "screen": {
+        "backing_scale": 2,
+        "frame_height": 982,
+        "frame_width": 1512,
+        "frame_x": -1512,
+        "frame_y": 458
+      },
+      "sha256": "55541bc14cf0b4943df92746416cfd76560e63f5dff372d96dfa0786ef611fbc",
+      "title": "RepoPrompt Portable",
+      "window_id": 2980
+    },
+    {
+      "ax_frame": {
+        "height": 949,
+        "width": 1504,
+        "x": -1508,
+        "y": 33
+      },
+      "backing_scale": 2,
+      "captured_at": "2026-07-27T05:19:16Z",
+      "cg_frame": {
+        "height": 949,
+        "width": 1504,
+        "x": -1508,
+        "y": 33
+      },
+      "pid": 23647,
+      "raw_pixels": [
+        3008,
+        1898
+      ],
+      "schema_version": 1,
+      "screen": {
+        "backing_scale": 2,
+        "frame_height": 982,
+        "frame_width": 1512,
+        "frame_x": -1512,
+        "frame_y": 458
+      },
+      "sha256": "55541bc14cf0b4943df92746416cfd76560e63f5dff372d96dfa0786ef611fbc",
+      "title": "RepoPrompt Portable",
+      "window_id": 2980
+    },
+    {
+      "ax_frame": {
+        "height": 949,
+        "width": 1504,
+        "x": -1508,
+        "y": 33
+      },
+      "backing_scale": 2,
+      "captured_at": "2026-07-27T05:19:18Z",
+      "cg_frame": {
+        "height": 949,
+        "width": 1504,
+        "x": -1508,
+        "y": 33
+      },
+      "pid": 23647,
+      "raw_pixels": [
+        3008,
+        1898
+      ],
+      "schema_version": 1,
+      "screen": {
+        "backing_scale": 2,
+        "frame_height": 982,
+        "frame_width": 1512,
+        "frame_x": -1512,
+        "frame_y": 458
+      },
+      "sha256": "55541bc14cf0b4943df92746416cfd76560e63f5dff372d96dfa0786ef611fbc",
+      "title": "RepoPrompt Portable",
+      "window_id": 2980
+    }
+  ],
+  "harness": {
+    "capture_binary_sha256": "46eef03af17a8d96e63caec190fa63501ca34554b50f01023cf9185f961fb589",
+    "capture_source_sha256": "969aecd004da323afefc1a2d6bf540dea7725e508441f4a13fbef76056f2675c",
+    "metrics_sha256": "6246d97c0ffbdac6c784510e61929731f8bf73f139c23518c40126584aa8e0a5",
+    "orchestrator_sha256": "b9d1e5cf765491a5b5e739fb45d35d8c63231adeb55943478c9b699e2becdf8c",
+    "requirements_sha256": "647f5b2087fcc5375dc45a98e3bcbe1cefe1c169b5f7f534ea6a80e5d7acfbab"
+  },
+  "head": "a3997cf3c661dc738117245d45af926128524a97",
+  "host": {
+    "appearance": "Dark",
+    "apple_accent_color": "system-default",
+    "architecture": "arm64",
+    "increase_contrast": "0",
+    "macos": "ProductName:\t\tmacOS\nProductVersion:\t\t26.5\nBuildVersion:\t\t25F71",
+    "python": "3.12.3 (v3.12.3:f6650f9ad7, Apr  9 2024, 08:18:47) [Clang 13.0.0 (clang-1300.0.29.30)]",
+    "reduce_transparency": "0",
+    "screen": {
+      "backing_scale": 2,
+      "frame_height": 982,
+      "frame_width": 1512,
+      "frame_x": -1512,
+      "frame_y": 458
+    },
+    "swift": "Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)\nTarget: arm64-apple-macosx26.0"
+  },
+  "measurement": {
+    "candidate_raw_pixels": [
+      3008,
+      1898
+    ],
+    "canvas": [
+      1956,
+      1252
+    ],
+    "mask_policy": "disjoint-right-bands-v1",
+    "metric_id": "rgb-nmae-gaussian-ssim-v1",
+    "normalization_id": "srgb-aspect-fill-lanczos-v1",
+    "target_raw_pixels": [
+      3008,
+      1920
+    ],
+    "window_points": [
+      1504,
+      949
+    ]
+  },
+  "run_id": "iteration-007-precondition",
+  "scenario": {
+    "expected_indexed_file_count": 22,
+    "fixture_sha256": "9249879d07c3116eb87e24a4ca8eb8a03651be2d6548d2b31627ca95c8ba4d8c",
+    "path": "Scripts/fixtures/classic-pixel-parity/scenario.json",
+    "sha256": "8f9870ad97d8ca9f337bc2c340c4cd0112df3e2773ec3798b5fef6929f748f17"
+  },
+  "schema_version": 1,
+  "target": {
+    "dimensions": [
+      3008,
+      1920
+    ],
+    "path": "docs/visual-contracts/classic-parity-target-v1.png",
+    "sha256": "07ec2644bcbf4f3a9f4eec7aa56d53404d8cbd933b75f7f490e11a25339ba916"
+  },
+  "worktree_after": {
+    "entries": [
+      {
+        "bytes": 185,
+        "path": ".codex/environments/environment.toml",
+        "sha256": "0d9c84ab61b4224545ec9a1792dbe36b22da071ef20168aaca706b19af3e0c97"
+      },
+      {
+        "bytes": 491,
+        "path": ".dockerignore",
+        "sha256": "52d0c97f8a7c9df2eb73020eb5991c857172b22d93c84a5b17927c3f351a7403"
+      },
+      {
+        "bytes": 70,
+        "path": ".gitignore",
+        "sha256": "d4fb36e7f12cdd07e2ba09f53df9ba43214e523842408ce5f46eb5b182912b49"
+      },
+      {
+        "bytes": 7807,
+        "path": "AGENTS.md",
+        "sha256": "75897e1a32566e1b389bf2bdf0ef9fe8c0a2b0d0a1af083e3978aaad5b9d19cd"
+      },
+      {
+        "bytes": 3332,
+        "path": "Dockerfile.headless",
+        "sha256": "9587d0e0eb04743397f8b70f7e5d20f121122799d7f37cfe25cb2305b6cdc487"
+      },
+      {
+        "bytes": 11378,
+        "path": "LinuxDesktop/Package.resolved",
+        "sha256": "4168e8036facce94634b479e6c98265d504a9d31797840c47cec6daf206341f7"
+      },
+      {
+        "bytes": 18760,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopProEditPathGuard.swift",
+        "sha256": "628710be03eca7ced4fbdbc420a5693693fbe3b8964438bcc2532bdd79514e07"
+      },
+      {
+        "bytes": 7456,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopProEditService.swift",
+        "sha256": "a393fa3bd9390811f745919a742827524049a8d4c096469acdb197a9c7ba55f8"
+      },
+      {
+        "bytes": 33301,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopProEditWriter.swift",
+        "sha256": "85d3e32a5f0bd7b7be99d01883c6265091d8239fc86893eed632c9eaab11fbf0"
+      },
+      {
+        "bytes": 3252,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopSliceDraftParser.swift",
+        "sha256": "e779ff8a0ffd705585859359b4fab8fb98c220eb90e8a4f7d70ec51d3d259624"
+      },
+      {
+        "bytes": 12824,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopState.swift",
+        "sha256": "205cbea0e5c32af8684f476ff71650fc41ef7be0ae49c5ec4176bb5b9c19b2fa"
+      },
+      {
+        "bytes": 30746,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/RootShellView.swift",
+        "sha256": "32f92d2aa13e1c80336846bf038247aebbb42c4b716098e26d5fdd5661de0f45"
+      },
+      {
+        "bytes": 13513,
+        "path": "LinuxDesktop/Tests/RepoPromptLinuxDesktopKitTests/DesktopLogicTests.swift",
+        "sha256": "07f2436fe425703812bfe62cb0a36dde14bf0fc8fd63148f109a65809b19c175"
+      },
+      {
+        "bytes": 54905,
+        "path": "LinuxDesktop/Tests/RepoPromptLinuxDesktopKitTests/DesktopProEditApplyTests.swift",
+        "sha256": "52440f8c9482502f9324d06e799dc2073f0b89d9379a4b442dbacd9425427657"
+      },
+      {
+        "bytes": 2323,
+        "path": "LinuxDesktop/Tests/RepoPromptLinuxDesktopKitTests/DesktopWorkspaceIntegrationTests.swift",
+        "sha256": "039620dbb70fdb65d571e7a58eb74d28cb03900f5c2116b4b820540e3184484d"
+      },
+      {
+        "bytes": 6445,
+        "path": "Package.resolved",
+        "sha256": "07b1a2601982bf9f0701282c11620a1147801b3a709bb4b6cb67d5ed625495b4"
+      },
+      {
+        "bytes": 4503,
+        "path": "Package.swift",
+        "sha256": "c08bdacfeb24c1c0c1be53dd5e83fb1285b3eafd50f2287fefd1ecfaea81f00c"
+      },
+      {
+        "bytes": 12522,
+        "path": "README.md",
+        "sha256": "c6473e0f3adb677354b56233aeab14b82680bdc75c05176ec7413e39fc221627"
+      },
+      {
+        "bytes": 2442,
+        "path": "RepoPromptCodeMap/CodeMapSyntaxArtifactBuilder.swift",
+        "sha256": "991f60499785e13462116606eab12a51631c9b98cafa86ec0b9d978aeb765d7b"
+      },
+      {
+        "bytes": 24585,
+        "path": "RepoPromptCodeMap/CodeMapSyntaxEngine.swift",
+        "sha256": "b9650716f47b07ed08e24924c985e1bd898196cb54d11ffb1e4d1ffa79d10046"
+      },
+      {
+        "bytes": 10264,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapCaptureIndex.swift",
+        "sha256": "4df3cff08e058d0f05ee42b6cb55976d5951a96a68ab8efc655a3640f7f20c1c"
+      },
+      {
+        "bytes": 5751,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapExtractionMemo.swift",
+        "sha256": "afa4f65e8dfa40bc92be71ae8f81144bf28e2f3264021cf5b590cc5e31854042"
+      },
+      {
+        "bytes": 126257,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapGenerator.swift",
+        "sha256": "50dbb0c817eb763455d252bff0ed70857cea658b837f70826b7022517a5f38fa"
+      },
+      {
+        "bytes": 2587,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapPCRE2Regex.swift",
+        "sha256": "f5525b4e5ca7ef9bfc51edcd4b310dd9bc28dd505e1c4a877a894ea3c838457c"
+      },
+      {
+        "bytes": 19463,
+        "path": "RepoPromptCodeMap/Extraction/JSTSSignatureExtractor.swift",
+        "sha256": "0593744b1d3bae7441a877bc69c10679f3a11247cca6b7e7a69debde944cff53"
+      },
+      {
+        "bytes": 65833,
+        "path": "RepoPromptCodeMap/Extraction/LanguageStrategies/SwiftCodeMapStrategy.swift",
+        "sha256": "f80767a5b42593142325f63fefe45f97ceda7100238a9c70c8dd9cbacbd34ed4"
+      },
+      {
+        "bytes": 26665,
+        "path": "RepoPromptCodeMap/Extraction/LanguageStrategies/TypeScriptCodeMapStrategy.swift",
+        "sha256": "53714f1a2d4a09aec6f4532e3e739c04f1560faec668d7adcd54754a48a1cdac"
+      },
+      {
+        "bytes": 69957,
+        "path": "RepoPromptCodeMap/Extraction/LanguageTypeExtractor.swift",
+        "sha256": "7c0413635161412e5c49a127851e8d89358d11b29d0c0b1d3fb87bd624ff7f7f"
+      },
+      {
+        "bytes": 5818,
+        "path": "RepoPromptCodeMap/Extraction/ReferencedTypesAccumulator.swift",
+        "sha256": "6e2b0a1814d630cc998ba6155e1566d6bdbe4c85bd785ce23cd74af795b8f775"
+      },
+      {
+        "bytes": 2364,
+        "path": "RepoPromptCodeMap/Extraction/SwiftSignatureParser.swift",
+        "sha256": "9590622917e4df3c2e1c045d75aa49e34e9427df4782c52e7dcfa5556bffd761"
+      },
+      {
+        "bytes": 6598,
+        "path": "RepoPromptCodeMap/Extraction/TopLevelScanner.swift",
+        "sha256": "27d65486cba89eb8d9e7bd489e3af458ae4154bd74307b8566f9d860eac61a9f"
+      },
+      {
+        "bytes": 63122,
+        "path": "RepoPromptCodeMap/Extraction/TypeCleaner.swift",
+        "sha256": "efd3685a47849be3803e37b01edffe1d9bb108b27b04013d322dcca84cfae701"
+      },
+      {
+        "bytes": 21820,
+        "path": "RepoPromptCodeMap/Models/CodeMapArtifactKey.swift",
+        "sha256": "832ccea59e786caaecb2d6616670c13022e51d52f982f5fd5af4731087a55201"
+      },
+      {
+        "bytes": 2426,
+        "path": "RepoPromptCodeMap/Models/CodeMapCoreSourceSnapshot.swift",
+        "sha256": "dfe2e53fe36e1e161421549457f992fefd42c839580676aee0bbf7c471deec51"
+      },
+      {
+        "bytes": 14636,
+        "path": "RepoPromptCodeMap/Models/CodeMapSyntaxArtifact.swift",
+        "sha256": "9781784581bb1e5c9afdc5ac597f555d875c151a19b0a5bffe839e7faea5bde0"
+      },
+      {
+        "bytes": 14800,
+        "path": "RepoPromptCodeMap/Performance/CodeMapPerformanceCollector.swift",
+        "sha256": "ab43b29b13d35a0a725b1944642ba80888bdf11541f4d3ae8078b17404d6384c"
+      },
+      {
+        "bytes": 1272,
+        "path": "RepoPromptCodeMap/PortableCodeMap.swift",
+        "sha256": "d3baba041a20f9dc4fc1daccd9fa9b3a42b0c3b508b432bb91ff772540221f94"
+      },
+      {
+        "bytes": 1638,
+        "path": "RepoPromptCodeMap/Queries/GoQueries.swift",
+        "sha256": "5cb51de88ec8caa4548961420eafbb06620a21db73d3a6e287e713acd891c297"
+      },
+      {
+        "bytes": 1082,
+        "path": "RepoPromptCodeMap/Queries/JavaQueries.swift",
+        "sha256": "e9c4db2a1366da4158207b9274b086255d5de48b65f7fb8ff88534553e628993"
+      },
+      {
+        "bytes": 6508,
+        "path": "RepoPromptCodeMap/Queries/JavaScriptQueries.swift",
+        "sha256": "5cea54b5916607c662a6d2798858cf60aef21f3ce523e89c95951879a145dc65"
+      },
+      {
+        "bytes": 1186,
+        "path": "RepoPromptCodeMap/Queries/PythonQueries.swift",
+        "sha256": "c31a8d794bca177832d9270506cc3bca2f395782baf8831053c2c3a8e475a405"
+      },
+      {
+        "bytes": 1310,
+        "path": "RepoPromptCodeMap/Queries/RubyQueries.swift",
+        "sha256": "e770b4bc9d2ee6b8ec4ee802697df8940e14e2800be7ab46603e56f28351c946"
+      },
+      {
+        "bytes": 1971,
+        "path": "RepoPromptCodeMap/Queries/RustQueries.swift",
+        "sha256": "b95493595fb406183f9fcc7bfb542e812f9e0c0a1ce6a42b9a6f73b7d1e4e70a"
+      },
+      {
+        "bytes": 4670,
+        "path": "RepoPromptCodeMap/Queries/SwiftQueries.swift",
+        "sha256": "4c0e4820c887074b502e9242e52b4f6965f5f86f1e8337e9c659767c2d51e399"
+      },
+      {
+        "bytes": 3145,
+        "path": "RepoPromptCodeMap/Queries/cQueries.swift",
+        "sha256": "1efd8de6d2ce20064116435203221786e7e8cbb18a4f40d1038feda2f2e5b7e5"
+      },
+      {
+        "bytes": 1950,
+        "path": "RepoPromptCodeMap/Queries/cSharpQueries.swift",
+        "sha256": "376c0ed2d8d1d0cfa81ace844a5082c7a2d67a74bfcbe5baa1e7d317404df0f4"
+      },
+      {
+        "bytes": 1678,
+        "path": "RepoPromptCodeMap/Queries/cppQueries.swift",
+        "sha256": "4018643f8f57007a00d5c2e02b57998de3c9e04833b6ad9d3a3cfa396d7d8562"
+      },
+      {
+        "bytes": 1655,
+        "path": "RepoPromptCodeMap/Queries/phpQueries.swift",
+        "sha256": "60ea68f631251da4344d38df6de400baf550cfc3bf731c9f4d4f065e512a69f4"
+      },
+      {
+        "bytes": 14560,
+        "path": "RepoPromptCodeMap/Queries/typeScript.swift",
+        "sha256": "10348ecce15f68534d1f47a4afbbb40633d34d9b52f2a9dd56bb15f9ede7b851"
+      },
+      {
+        "bytes": 7257,
+        "path": "RepoPromptCore/WorkspaceContext/Selection/WorkspaceSelectionReducer.swift",
+        "sha256": "722ef710878907fd9a40f69cd13a1cd16a50902bf9be410d9982317e3fbd9868"
+      },
+      {
+        "bytes": 4614,
+        "path": "RepoPromptCore/WorkspaceContext/Slices/SliceAssembly.swift",
+        "sha256": "ce55213585bfa2da5b65179e288c855d09dcac640835cf3606f054bc74e7d82e"
+      },
+      {
+        "bytes": 2671,
+        "path": "RepoPromptCore/WorkspaceContext/Slices/SliceRangeMath.swift",
+        "sha256": "c89191f3b9643cf96f84d25ffe6da280f1d89cc064b19ceaf26577f7de690308"
+      },
+      {
+        "bytes": 9410,
+        "path": "RepoPromptHeadless/HeadlessProEditExecutionWorkflow.swift",
+        "sha256": "fdf6f352e574c6087ff1be82626b742f3a5fe4470e4809cc00ac6e5a75842ad5"
+      },
+      {
+        "bytes": 3309,
+        "path": "RepoPromptHeadless/HeadlessSecureFileReader.swift",
+        "sha256": "71f6dad5f760751d7e1a153531f4925efa16c2b12b0116dadb51bd765a948dd2"
+      },
+      {
+        "bytes": 52305,
+        "path": "RepoPromptHeadless/HeadlessToolCatalog.swift",
+        "sha256": "4bacdd32a45c135a78bfda367eb0918fac274b83f37576deedf2459f03d6fa1d"
+      },
+      {
+        "bytes": 22486,
+        "path": "RepoPromptHeadless/HeadlessWorkspaceContextBuilder.swift",
+        "sha256": "305308f22716d4b991ab82a3afd2960b204f05e99b3b26a3d745201dc2b41d6e"
+      },
+      {
+        "bytes": 21291,
+        "path": "RepoPromptHeadless/OpenAICompatibleOracleProvider.swift",
+        "sha256": "7b7e575694a0bfa50a5241d55f6b1118a453f2812ce3e3efdc873ddee83d1a5f"
+      },
+      {
+        "bytes": 15559,
+        "path": "RepoPromptHeadless/PortableProEditArtifact.swift",
+        "sha256": "93a8407c2214793b4dc2423a150c5577f89e7e32c0518d36bd83d0695b0fedea"
+      },
+      {
+        "bytes": 11360,
+        "path": "RepoPromptHeadless/PortableWorkspaceModels.swift",
+        "sha256": "d068660a6bf7868af19d3b30e70f6fe81c1000efd48ab17b06f5b122200ec544"
+      },
+      {
+        "bytes": 42418,
+        "path": "RepoPromptHeadless/PortableWorkspaceService.swift",
+        "sha256": "5b11b59c2cf82ecdd970423bb4662886ef198a18b6892f840c70d803d3fbe7a2"
+      },
+      {
+        "bytes": 73,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/c/smoke.c",
+        "sha256": "3bf77cd1eca994589d4d68709771325b5c57c271df3b8d660e8d8e2880a03f67"
+      },
+      {
+        "bytes": 577,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/cpp/edge_methods.cpp",
+        "sha256": "8c56be136cb6b7ca979faf82b8b55726e22e84bb1c06d8dd1a649d3b7b65cc64"
+      },
+      {
+        "bytes": 251,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/cs/smoke.cs",
+        "sha256": "d84e8d0676241f244a10d09140f50783afaececebfa3b4dc4987f2b7ef7db1bc"
+      },
+      {
+        "bytes": 245,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/go/smoke.go",
+        "sha256": "dbea2ae12828f8bdd4a288a358d7ad3df22b64f0a1f8d042e6169239237d4ce8"
+      },
+      {
+        "bytes": 654,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/java/smoke.java",
+        "sha256": "982167e56a4b7300ed5cf0f3fea0fda9b2c857549b76d2ca497ad04e30cf2f0d"
+      },
+      {
+        "bytes": 486,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/js/smoke.js",
+        "sha256": "3df59e2ef68cb9bfcf9ac43734c63db150bac2f86589267c8650326d636f19af"
+      },
+      {
+        "bytes": 556,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/php/edge_namespaces.php",
+        "sha256": "a6454385533d44ad4dabc4c8d4023dd388f705329a82d2d42ca3017ef482c20b"
+      },
+      {
+        "bytes": 277,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/py/smoke.py",
+        "sha256": "52747a8e573441c33a5534d0c9290fab51e7b61f79dc151ab082c58d4cb1e0b1"
+      },
+      {
+        "bytes": 377,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/rb/smoke.rb",
+        "sha256": "028562aa4005acac6349adaf6684210ef8e613120c7e22351cf04cc940eeec7c"
+      },
+      {
+        "bytes": 659,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/rs/smoke.rs",
+        "sha256": "a82a26653139bcecc6c777bb530f7bfbc1b1d3dae6c9ab0c59b5b21402a3597d"
+      },
+      {
+        "bytes": 301,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/swift/smoke.swift",
+        "sha256": "1a076f29734dcf04b1d481390e8f1359dfc6f6b64caa63491b8d8f6e29ae1005"
+      },
+      {
+        "bytes": 403,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/ts/smoke.ts",
+        "sha256": "2476eb8a686464469a3bd62fc3c530341af0ab8a5c36a08f29b319d1c9221224"
+      },
+      {
+        "bytes": 385,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/tsx/component.tsx",
+        "sha256": "eed960e599e37c2d852aa8ec414e001377aac3a775dfa793d0a31b5a0d0a4b20"
+      },
+      {
+        "bytes": 110,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/c_smoke.codemap.txt",
+        "sha256": "bcb7ee7b9aa8f26e6d60c49272365847849da01c9dbb2367e61730f121e8e1c1"
+      },
+      {
+        "bytes": 301,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/cpp_edge_methods.codemap.txt",
+        "sha256": "c4c9be3d89172919462264ed4e7b008d429ff23ac4a542f9d3b8c9e35ab7aa94"
+      },
+      {
+        "bytes": 281,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/cs_smoke.codemap.txt",
+        "sha256": "f6f19d24dadab94b0a26daf1473ca22701e22a071a97fa20cb8ebd3812d795cb"
+      },
+      {
+        "bytes": 132,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/fixture-tree.txt",
+        "sha256": "54261ff48293b34ed9f5da5504af692d4030ae7258b681853c454fb476544ec8"
+      },
+      {
+        "bytes": 272,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/go_smoke.codemap.txt",
+        "sha256": "c207fcf6022fd8f44f85cfadf3e6365583b6b8c8f231f6368382c3c49e8847b0"
+      },
+      {
+        "bytes": 320,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/java_smoke.codemap.txt",
+        "sha256": "ced3e415f74f9d45a44a6649b7989727a62fcfd56aea1a57e9140e797774e561"
+      },
+      {
+        "bytes": 395,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/js_smoke.codemap.txt",
+        "sha256": "59ce2e90761f1da0e2be43eb87f2a821da8e63763df9ba1e164c64bdf846f938"
+      },
+      {
+        "bytes": 461,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/php_edge_namespaces.codemap.txt",
+        "sha256": "8d438afb884912b8a9847cfa536483542fcd132e13995fe838453a6e11c1aa79"
+      },
+      {
+        "bytes": 257,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/py_smoke.codemap.txt",
+        "sha256": "1f8a2c07d024237e69ede4d6650562c6657e0598704555a8e6d24d79ec9b6ca0"
+      },
+      {
+        "bytes": 797,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/rb_smoke.codemap.txt",
+        "sha256": "ce45c538123efa5c15f6dd5ab07e070a77e12b0a64c883499213332d20b990c7"
+      },
+      {
+        "bytes": 439,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/rs_smoke.codemap.txt",
+        "sha256": "702f45359581b85f9185ce1d7928f2b554d0537462e2a094b37dbc437a3af1e0"
+      },
+      {
+        "bytes": 353,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/swift_smoke.codemap.txt",
+        "sha256": "8896f608c762c679e6d3793af11a8dd5d0312c7f2b14765109a6a3ecb7a28a48"
+      },
+      {
+        "bytes": 553,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/ts_smoke.codemap.txt",
+        "sha256": "cd5cc0cd9bbe9d8cd9c9cc168c29a24af50241d7f03f2356c46f60d2e3fbc6ab"
+      },
+      {
+        "bytes": 583,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/tsx_component.codemap.txt",
+        "sha256": "1c37575dce832d73d68f24670754510a934f7e5de737a72afc53343c92ff1e21"
+      },
+      {
+        "bytes": 2002,
+        "path": "RepoPromptHeadlessTests/PortableCodeMapParityTests.swift",
+        "sha256": "52196aa78a4a21d0f975f87faa2fda89291dce6d8ed51fde88e3fe1fc7b934ed"
+      },
+      {
+        "bytes": 17673,
+        "path": "RepoPromptHeadlessTests/PortableProEditArtifactTests.swift",
+        "sha256": "3fd5806bd91ab83fbe91a9af7a2c0d58391d4c10361253dc5e87afdf807e928e"
+      },
+      {
+        "bytes": 24821,
+        "path": "RepoPromptHeadlessTests/PortableProEditMaterializationTests.swift",
+        "sha256": "ff6bce6148846f91f89c654bc4d171317b13e8edc8c4107fa6c0747398e7b6d0"
+      },
+      {
+        "bytes": 29868,
+        "path": "RepoPromptHeadlessTests/PortableWorkspaceServiceTests.swift",
+        "sha256": "2fa6715ad080a247eb10dcaf8d4ec104a4349ee926d7403ea28ec7d85756ee49"
+      },
+      {
+        "bytes": 45756,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessCatalogOracleTests.swift",
+        "sha256": "22a0791e36cbb0d4f5597f61121b2444ee919557facf5d843e6c09d9d4a32edb"
+      },
+      {
+        "bytes": 11542,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessFileSearchSecurityTests.swift",
+        "sha256": "73aab49e98be07ade68d9051fe0bcc4b0f5a523d5fa1b212d4173e68cc1cf9cb"
+      },
+      {
+        "bytes": 18738,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessOracleProviderTests.swift",
+        "sha256": "d4719e4c73706f14d2d4ffb169d17650b85d2ffe7a793a28c8d77baf691a917c"
+      },
+      {
+        "bytes": 18718,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessWorkspaceContextBuilderTests.swift",
+        "sha256": "444565609f59a5c89809d9c815011b91e58acbac696105c346e1c6795aef1b85"
+      },
+      {
+        "bytes": 15790,
+        "path": "Scripts/classic_pixel_parity_capture.swift",
+        "sha256": "969aecd004da323afefc1a2d6bf540dea7725e508441f4a13fbef76056f2675c"
+      },
+      {
+        "bytes": 12833,
+        "path": "Scripts/classic_pixel_parity_metrics.py",
+        "sha256": "6246d97c0ffbdac6c784510e61929731f8bf73f139c23518c40126584aa8e0a5"
+      },
+      {
+        "bytes": 4522,
+        "path": "Scripts/fixtures/classic-pixel-parity/scenario.json",
+        "sha256": "8f9870ad97d8ca9f337bc2c340c4cd0112df3e2773ec3798b5fef6929f748f17"
+      },
+      {
+        "bytes": 341,
+        "path": "Scripts/requirements-classic-pixel-parity.txt",
+        "sha256": "647f5b2087fcc5375dc45a98e3bcbe1cefe1c169b5f7f534ea6a80e5d7acfbab"
+      },
+      {
+        "bytes": 27543,
+        "path": "Scripts/run_classic_pixel_parity.py",
+        "sha256": "b9d1e5cf765491a5b5e739fb45d35d8c63231adeb55943478c9b699e2becdf8c"
+      },
+      {
+        "bytes": 4210,
+        "path": "Scripts/smoke_linux_desktop.sh",
+        "sha256": "c140273b9c5e105cffcadec404e5ba7cd19fd6d841b8eac775cbb4c60d91d0e6"
+      },
+      {
+        "bytes": 5393,
+        "path": "Scripts/test_classic_pixel_parity_metrics.py",
+        "sha256": "2d10c762d78358bb3d7fa335bada33274e98d93a3b04f6e522c5718ddf176b16"
+      },
+      {
+        "bytes": 10073,
+        "path": "Scripts/verify_linux_desktop_graph.py",
+        "sha256": "e98161f312f6e2a4220d3041e0a7e289e644372c78a0e0e72c3b452b40ccd766"
+      },
+      {
+        "bytes": 985,
+        "path": "TreeSitterScannerSupport/include/tree_sitter/alloc.h",
+        "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+      },
+      {
+        "bytes": 10431,
+        "path": "TreeSitterScannerSupport/include/tree_sitter/array.h",
+        "sha256": "5bdf6ed1a78e3409fd443e085ca967a64c188a5d082aaf7f819bccd53a471c94"
+      },
+      {
+        "bytes": 7624,
+        "path": "TreeSitterScannerSupport/include/tree_sitter/parser.h",
+        "sha256": "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+      },
+      {
+        "bytes": 10576,
+        "path": "TreeSitterScannerSupport/src/javascript/scanner.c",
+        "sha256": "b3d3f64284d97bf80749c026862427782cf7ecc0b7dc094e6698ab311c9a42c7"
+      },
+      {
+        "bytes": 15470,
+        "path": "TreeSitterScannerSupport/src/python/scanner.c",
+        "sha256": "6db82134ac2d4c90a1a1475487a625cface02662ebda9b7478cad9c7147e9afe"
+      },
+      {
+        "bytes": 8367,
+        "path": "docs/architecture/linux-desktop.md",
+        "sha256": "96751162b268a057650356ae310df637dc39e861190a0f7f8f426656166f2926"
+      },
+      {
+        "bytes": 20337,
+        "path": "docs/architecture/portable-oracle-mcp.md",
+        "sha256": "62e474a75103cfedfb5904d6224b845f88ed7a33e3160dc1ef421690d0abcd65"
+      },
+      {
+        "bytes": 1514829,
+        "path": "docs/visual-contracts/classic-parity-target-v1.png",
+        "sha256": "07ec2644bcbf4f3a9f4eec7aa56d53404d8cbd933b75f7f490e11a25339ba916"
+      },
+      {
+        "bytes": 48946,
+        "path": "prompt-exports/oracle-plan-2026-07-26-155226-chat-81a6.md",
+        "sha256": "bdd80d5e4e657734f2ca9a3e57ef444259b5655f4e4e5cbe15cc70b80c961ecd"
+      },
+      {
+        "bytes": 3702,
+        "path": "prompt-exports/oracle-review-2026-07-26-162552-classic-layout-slice-f0ba.md",
+        "sha256": "ae5d3f505dba260f9da1ac42920780098812e87b5a8e7b20a3b35070de299bed"
+      },
+      {
+        "bytes": 2078,
+        "path": "script/build_and_run.sh",
+        "sha256": "d3c3d0e0e77f5fa6cd466ba6a234d6d23d923e9eda605bb0c846d39309441e57"
+      }
+    ],
+    "sha256": "558e8533ed93cce9931db8d4429a4aec7ba6a0b3d11aa690010a7502b3a8fbd8"
+  },
+  "worktree_before": {
+    "entries": [
+      {
+        "bytes": 185,
+        "path": ".codex/environments/environment.toml",
+        "sha256": "0d9c84ab61b4224545ec9a1792dbe36b22da071ef20168aaca706b19af3e0c97"
+      },
+      {
+        "bytes": 491,
+        "path": ".dockerignore",
+        "sha256": "52d0c97f8a7c9df2eb73020eb5991c857172b22d93c84a5b17927c3f351a7403"
+      },
+      {
+        "bytes": 70,
+        "path": ".gitignore",
+        "sha256": "d4fb36e7f12cdd07e2ba09f53df9ba43214e523842408ce5f46eb5b182912b49"
+      },
+      {
+        "bytes": 7807,
+        "path": "AGENTS.md",
+        "sha256": "75897e1a32566e1b389bf2bdf0ef9fe8c0a2b0d0a1af083e3978aaad5b9d19cd"
+      },
+      {
+        "bytes": 3332,
+        "path": "Dockerfile.headless",
+        "sha256": "9587d0e0eb04743397f8b70f7e5d20f121122799d7f37cfe25cb2305b6cdc487"
+      },
+      {
+        "bytes": 11378,
+        "path": "LinuxDesktop/Package.resolved",
+        "sha256": "4168e8036facce94634b479e6c98265d504a9d31797840c47cec6daf206341f7"
+      },
+      {
+        "bytes": 18760,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopProEditPathGuard.swift",
+        "sha256": "628710be03eca7ced4fbdbc420a5693693fbe3b8964438bcc2532bdd79514e07"
+      },
+      {
+        "bytes": 7456,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopProEditService.swift",
+        "sha256": "a393fa3bd9390811f745919a742827524049a8d4c096469acdb197a9c7ba55f8"
+      },
+      {
+        "bytes": 33301,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopProEditWriter.swift",
+        "sha256": "85d3e32a5f0bd7b7be99d01883c6265091d8239fc86893eed632c9eaab11fbf0"
+      },
+      {
+        "bytes": 3252,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopSliceDraftParser.swift",
+        "sha256": "e779ff8a0ffd705585859359b4fab8fb98c220eb90e8a4f7d70ec51d3d259624"
+      },
+      {
+        "bytes": 12824,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/DesktopState.swift",
+        "sha256": "205cbea0e5c32af8684f476ff71650fc41ef7be0ae49c5ec4176bb5b9c19b2fa"
+      },
+      {
+        "bytes": 30746,
+        "path": "LinuxDesktop/Sources/RepoPromptLinuxDesktopKit/RootShellView.swift",
+        "sha256": "32f92d2aa13e1c80336846bf038247aebbb42c4b716098e26d5fdd5661de0f45"
+      },
+      {
+        "bytes": 13513,
+        "path": "LinuxDesktop/Tests/RepoPromptLinuxDesktopKitTests/DesktopLogicTests.swift",
+        "sha256": "07f2436fe425703812bfe62cb0a36dde14bf0fc8fd63148f109a65809b19c175"
+      },
+      {
+        "bytes": 54905,
+        "path": "LinuxDesktop/Tests/RepoPromptLinuxDesktopKitTests/DesktopProEditApplyTests.swift",
+        "sha256": "52440f8c9482502f9324d06e799dc2073f0b89d9379a4b442dbacd9425427657"
+      },
+      {
+        "bytes": 2323,
+        "path": "LinuxDesktop/Tests/RepoPromptLinuxDesktopKitTests/DesktopWorkspaceIntegrationTests.swift",
+        "sha256": "039620dbb70fdb65d571e7a58eb74d28cb03900f5c2116b4b820540e3184484d"
+      },
+      {
+        "bytes": 6445,
+        "path": "Package.resolved",
+        "sha256": "07b1a2601982bf9f0701282c11620a1147801b3a709bb4b6cb67d5ed625495b4"
+      },
+      {
+        "bytes": 4503,
+        "path": "Package.swift",
+        "sha256": "c08bdacfeb24c1c0c1be53dd5e83fb1285b3eafd50f2287fefd1ecfaea81f00c"
+      },
+      {
+        "bytes": 12522,
+        "path": "README.md",
+        "sha256": "c6473e0f3adb677354b56233aeab14b82680bdc75c05176ec7413e39fc221627"
+      },
+      {
+        "bytes": 2442,
+        "path": "RepoPromptCodeMap/CodeMapSyntaxArtifactBuilder.swift",
+        "sha256": "991f60499785e13462116606eab12a51631c9b98cafa86ec0b9d978aeb765d7b"
+      },
+      {
+        "bytes": 24585,
+        "path": "RepoPromptCodeMap/CodeMapSyntaxEngine.swift",
+        "sha256": "b9650716f47b07ed08e24924c985e1bd898196cb54d11ffb1e4d1ffa79d10046"
+      },
+      {
+        "bytes": 10264,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapCaptureIndex.swift",
+        "sha256": "4df3cff08e058d0f05ee42b6cb55976d5951a96a68ab8efc655a3640f7f20c1c"
+      },
+      {
+        "bytes": 5751,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapExtractionMemo.swift",
+        "sha256": "afa4f65e8dfa40bc92be71ae8f81144bf28e2f3264021cf5b590cc5e31854042"
+      },
+      {
+        "bytes": 126257,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapGenerator.swift",
+        "sha256": "50dbb0c817eb763455d252bff0ed70857cea658b837f70826b7022517a5f38fa"
+      },
+      {
+        "bytes": 2587,
+        "path": "RepoPromptCodeMap/Extraction/CodeMapPCRE2Regex.swift",
+        "sha256": "f5525b4e5ca7ef9bfc51edcd4b310dd9bc28dd505e1c4a877a894ea3c838457c"
+      },
+      {
+        "bytes": 19463,
+        "path": "RepoPromptCodeMap/Extraction/JSTSSignatureExtractor.swift",
+        "sha256": "0593744b1d3bae7441a877bc69c10679f3a11247cca6b7e7a69debde944cff53"
+      },
+      {
+        "bytes": 65833,
+        "path": "RepoPromptCodeMap/Extraction/LanguageStrategies/SwiftCodeMapStrategy.swift",
+        "sha256": "f80767a5b42593142325f63fefe45f97ceda7100238a9c70c8dd9cbacbd34ed4"
+      },
+      {
+        "bytes": 26665,
+        "path": "RepoPromptCodeMap/Extraction/LanguageStrategies/TypeScriptCodeMapStrategy.swift",
+        "sha256": "53714f1a2d4a09aec6f4532e3e739c04f1560faec668d7adcd54754a48a1cdac"
+      },
+      {
+        "bytes": 69957,
+        "path": "RepoPromptCodeMap/Extraction/LanguageTypeExtractor.swift",
+        "sha256": "7c0413635161412e5c49a127851e8d89358d11b29d0c0b1d3fb87bd624ff7f7f"
+      },
+      {
+        "bytes": 5818,
+        "path": "RepoPromptCodeMap/Extraction/ReferencedTypesAccumulator.swift",
+        "sha256": "6e2b0a1814d630cc998ba6155e1566d6bdbe4c85bd785ce23cd74af795b8f775"
+      },
+      {
+        "bytes": 2364,
+        "path": "RepoPromptCodeMap/Extraction/SwiftSignatureParser.swift",
+        "sha256": "9590622917e4df3c2e1c045d75aa49e34e9427df4782c52e7dcfa5556bffd761"
+      },
+      {
+        "bytes": 6598,
+        "path": "RepoPromptCodeMap/Extraction/TopLevelScanner.swift",
+        "sha256": "27d65486cba89eb8d9e7bd489e3af458ae4154bd74307b8566f9d860eac61a9f"
+      },
+      {
+        "bytes": 63122,
+        "path": "RepoPromptCodeMap/Extraction/TypeCleaner.swift",
+        "sha256": "efd3685a47849be3803e37b01edffe1d9bb108b27b04013d322dcca84cfae701"
+      },
+      {
+        "bytes": 21820,
+        "path": "RepoPromptCodeMap/Models/CodeMapArtifactKey.swift",
+        "sha256": "832ccea59e786caaecb2d6616670c13022e51d52f982f5fd5af4731087a55201"
+      },
+      {
+        "bytes": 2426,
+        "path": "RepoPromptCodeMap/Models/CodeMapCoreSourceSnapshot.swift",
+        "sha256": "dfe2e53fe36e1e161421549457f992fefd42c839580676aee0bbf7c471deec51"
+      },
+      {
+        "bytes": 14636,
+        "path": "RepoPromptCodeMap/Models/CodeMapSyntaxArtifact.swift",
+        "sha256": "9781784581bb1e5c9afdc5ac597f555d875c151a19b0a5bffe839e7faea5bde0"
+      },
+      {
+        "bytes": 14800,
+        "path": "RepoPromptCodeMap/Performance/CodeMapPerformanceCollector.swift",
+        "sha256": "ab43b29b13d35a0a725b1944642ba80888bdf11541f4d3ae8078b17404d6384c"
+      },
+      {
+        "bytes": 1272,
+        "path": "RepoPromptCodeMap/PortableCodeMap.swift",
+        "sha256": "d3baba041a20f9dc4fc1daccd9fa9b3a42b0c3b508b432bb91ff772540221f94"
+      },
+      {
+        "bytes": 1638,
+        "path": "RepoPromptCodeMap/Queries/GoQueries.swift",
+        "sha256": "5cb51de88ec8caa4548961420eafbb06620a21db73d3a6e287e713acd891c297"
+      },
+      {
+        "bytes": 1082,
+        "path": "RepoPromptCodeMap/Queries/JavaQueries.swift",
+        "sha256": "e9c4db2a1366da4158207b9274b086255d5de48b65f7fb8ff88534553e628993"
+      },
+      {
+        "bytes": 6508,
+        "path": "RepoPromptCodeMap/Queries/JavaScriptQueries.swift",
+        "sha256": "5cea54b5916607c662a6d2798858cf60aef21f3ce523e89c95951879a145dc65"
+      },
+      {
+        "bytes": 1186,
+        "path": "RepoPromptCodeMap/Queries/PythonQueries.swift",
+        "sha256": "c31a8d794bca177832d9270506cc3bca2f395782baf8831053c2c3a8e475a405"
+      },
+      {
+        "bytes": 1310,
+        "path": "RepoPromptCodeMap/Queries/RubyQueries.swift",
+        "sha256": "e770b4bc9d2ee6b8ec4ee802697df8940e14e2800be7ab46603e56f28351c946"
+      },
+      {
+        "bytes": 1971,
+        "path": "RepoPromptCodeMap/Queries/RustQueries.swift",
+        "sha256": "b95493595fb406183f9fcc7bfb542e812f9e0c0a1ce6a42b9a6f73b7d1e4e70a"
+      },
+      {
+        "bytes": 4670,
+        "path": "RepoPromptCodeMap/Queries/SwiftQueries.swift",
+        "sha256": "4c0e4820c887074b502e9242e52b4f6965f5f86f1e8337e9c659767c2d51e399"
+      },
+      {
+        "bytes": 3145,
+        "path": "RepoPromptCodeMap/Queries/cQueries.swift",
+        "sha256": "1efd8de6d2ce20064116435203221786e7e8cbb18a4f40d1038feda2f2e5b7e5"
+      },
+      {
+        "bytes": 1950,
+        "path": "RepoPromptCodeMap/Queries/cSharpQueries.swift",
+        "sha256": "376c0ed2d8d1d0cfa81ace844a5082c7a2d67a74bfcbe5baa1e7d317404df0f4"
+      },
+      {
+        "bytes": 1678,
+        "path": "RepoPromptCodeMap/Queries/cppQueries.swift",
+        "sha256": "4018643f8f57007a00d5c2e02b57998de3c9e04833b6ad9d3a3cfa396d7d8562"
+      },
+      {
+        "bytes": 1655,
+        "path": "RepoPromptCodeMap/Queries/phpQueries.swift",
+        "sha256": "60ea68f631251da4344d38df6de400baf550cfc3bf731c9f4d4f065e512a69f4"
+      },
+      {
+        "bytes": 14560,
+        "path": "RepoPromptCodeMap/Queries/typeScript.swift",
+        "sha256": "10348ecce15f68534d1f47a4afbbb40633d34d9b52f2a9dd56bb15f9ede7b851"
+      },
+      {
+        "bytes": 7257,
+        "path": "RepoPromptCore/WorkspaceContext/Selection/WorkspaceSelectionReducer.swift",
+        "sha256": "722ef710878907fd9a40f69cd13a1cd16a50902bf9be410d9982317e3fbd9868"
+      },
+      {
+        "bytes": 4614,
+        "path": "RepoPromptCore/WorkspaceContext/Slices/SliceAssembly.swift",
+        "sha256": "ce55213585bfa2da5b65179e288c855d09dcac640835cf3606f054bc74e7d82e"
+      },
+      {
+        "bytes": 2671,
+        "path": "RepoPromptCore/WorkspaceContext/Slices/SliceRangeMath.swift",
+        "sha256": "c89191f3b9643cf96f84d25ffe6da280f1d89cc064b19ceaf26577f7de690308"
+      },
+      {
+        "bytes": 9410,
+        "path": "RepoPromptHeadless/HeadlessProEditExecutionWorkflow.swift",
+        "sha256": "fdf6f352e574c6087ff1be82626b742f3a5fe4470e4809cc00ac6e5a75842ad5"
+      },
+      {
+        "bytes": 3309,
+        "path": "RepoPromptHeadless/HeadlessSecureFileReader.swift",
+        "sha256": "71f6dad5f760751d7e1a153531f4925efa16c2b12b0116dadb51bd765a948dd2"
+      },
+      {
+        "bytes": 52305,
+        "path": "RepoPromptHeadless/HeadlessToolCatalog.swift",
+        "sha256": "4bacdd32a45c135a78bfda367eb0918fac274b83f37576deedf2459f03d6fa1d"
+      },
+      {
+        "bytes": 22486,
+        "path": "RepoPromptHeadless/HeadlessWorkspaceContextBuilder.swift",
+        "sha256": "305308f22716d4b991ab82a3afd2960b204f05e99b3b26a3d745201dc2b41d6e"
+      },
+      {
+        "bytes": 21291,
+        "path": "RepoPromptHeadless/OpenAICompatibleOracleProvider.swift",
+        "sha256": "7b7e575694a0bfa50a5241d55f6b1118a453f2812ce3e3efdc873ddee83d1a5f"
+      },
+      {
+        "bytes": 15559,
+        "path": "RepoPromptHeadless/PortableProEditArtifact.swift",
+        "sha256": "93a8407c2214793b4dc2423a150c5577f89e7e32c0518d36bd83d0695b0fedea"
+      },
+      {
+        "bytes": 11360,
+        "path": "RepoPromptHeadless/PortableWorkspaceModels.swift",
+        "sha256": "d068660a6bf7868af19d3b30e70f6fe81c1000efd48ab17b06f5b122200ec544"
+      },
+      {
+        "bytes": 42418,
+        "path": "RepoPromptHeadless/PortableWorkspaceService.swift",
+        "sha256": "5b11b59c2cf82ecdd970423bb4662886ef198a18b6892f840c70d803d3fbe7a2"
+      },
+      {
+        "bytes": 73,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/c/smoke.c",
+        "sha256": "3bf77cd1eca994589d4d68709771325b5c57c271df3b8d660e8d8e2880a03f67"
+      },
+      {
+        "bytes": 577,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/cpp/edge_methods.cpp",
+        "sha256": "8c56be136cb6b7ca979faf82b8b55726e22e84bb1c06d8dd1a649d3b7b65cc64"
+      },
+      {
+        "bytes": 251,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/cs/smoke.cs",
+        "sha256": "d84e8d0676241f244a10d09140f50783afaececebfa3b4dc4987f2b7ef7db1bc"
+      },
+      {
+        "bytes": 245,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/go/smoke.go",
+        "sha256": "dbea2ae12828f8bdd4a288a358d7ad3df22b64f0a1f8d042e6169239237d4ce8"
+      },
+      {
+        "bytes": 654,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/java/smoke.java",
+        "sha256": "982167e56a4b7300ed5cf0f3fea0fda9b2c857549b76d2ca497ad04e30cf2f0d"
+      },
+      {
+        "bytes": 486,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/js/smoke.js",
+        "sha256": "3df59e2ef68cb9bfcf9ac43734c63db150bac2f86589267c8650326d636f19af"
+      },
+      {
+        "bytes": 556,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/php/edge_namespaces.php",
+        "sha256": "a6454385533d44ad4dabc4c8d4023dd388f705329a82d2d42ca3017ef482c20b"
+      },
+      {
+        "bytes": 277,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/py/smoke.py",
+        "sha256": "52747a8e573441c33a5534d0c9290fab51e7b61f79dc151ab082c58d4cb1e0b1"
+      },
+      {
+        "bytes": 377,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/rb/smoke.rb",
+        "sha256": "028562aa4005acac6349adaf6684210ef8e613120c7e22351cf04cc940eeec7c"
+      },
+      {
+        "bytes": 659,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/rs/smoke.rs",
+        "sha256": "a82a26653139bcecc6c777bb530f7bfbc1b1d3dae6c9ab0c59b5b21402a3597d"
+      },
+      {
+        "bytes": 301,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/swift/smoke.swift",
+        "sha256": "1a076f29734dcf04b1d481390e8f1359dfc6f6b64caa63491b8d8f6e29ae1005"
+      },
+      {
+        "bytes": 403,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/ts/smoke.ts",
+        "sha256": "2476eb8a686464469a3bd62fc3c530341af0ab8a5c36a08f29b319d1c9221224"
+      },
+      {
+        "bytes": 385,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Fixtures/tsx/component.tsx",
+        "sha256": "eed960e599e37c2d852aa8ec414e001377aac3a775dfa793d0a31b5a0d0a4b20"
+      },
+      {
+        "bytes": 110,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/c_smoke.codemap.txt",
+        "sha256": "bcb7ee7b9aa8f26e6d60c49272365847849da01c9dbb2367e61730f121e8e1c1"
+      },
+      {
+        "bytes": 301,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/cpp_edge_methods.codemap.txt",
+        "sha256": "c4c9be3d89172919462264ed4e7b008d429ff23ac4a542f9d3b8c9e35ab7aa94"
+      },
+      {
+        "bytes": 281,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/cs_smoke.codemap.txt",
+        "sha256": "f6f19d24dadab94b0a26daf1473ca22701e22a071a97fa20cb8ebd3812d795cb"
+      },
+      {
+        "bytes": 132,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/fixture-tree.txt",
+        "sha256": "54261ff48293b34ed9f5da5504af692d4030ae7258b681853c454fb476544ec8"
+      },
+      {
+        "bytes": 272,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/go_smoke.codemap.txt",
+        "sha256": "c207fcf6022fd8f44f85cfadf3e6365583b6b8c8f231f6368382c3c49e8847b0"
+      },
+      {
+        "bytes": 320,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/java_smoke.codemap.txt",
+        "sha256": "ced3e415f74f9d45a44a6649b7989727a62fcfd56aea1a57e9140e797774e561"
+      },
+      {
+        "bytes": 395,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/js_smoke.codemap.txt",
+        "sha256": "59ce2e90761f1da0e2be43eb87f2a821da8e63763df9ba1e164c64bdf846f938"
+      },
+      {
+        "bytes": 461,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/php_edge_namespaces.codemap.txt",
+        "sha256": "8d438afb884912b8a9847cfa536483542fcd132e13995fe838453a6e11c1aa79"
+      },
+      {
+        "bytes": 257,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/py_smoke.codemap.txt",
+        "sha256": "1f8a2c07d024237e69ede4d6650562c6657e0598704555a8e6d24d79ec9b6ca0"
+      },
+      {
+        "bytes": 797,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/rb_smoke.codemap.txt",
+        "sha256": "ce45c538123efa5c15f6dd5ab07e070a77e12b0a64c883499213332d20b990c7"
+      },
+      {
+        "bytes": 439,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/rs_smoke.codemap.txt",
+        "sha256": "702f45359581b85f9185ce1d7928f2b554d0537462e2a094b37dbc437a3af1e0"
+      },
+      {
+        "bytes": 353,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/swift_smoke.codemap.txt",
+        "sha256": "8896f608c762c679e6d3793af11a8dd5d0312c7f2b14765109a6a3ecb7a28a48"
+      },
+      {
+        "bytes": 553,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/ts_smoke.codemap.txt",
+        "sha256": "cd5cc0cd9bbe9d8cd9c9cc168c29a24af50241d7f03f2356c46f60d2e3fbc6ab"
+      },
+      {
+        "bytes": 583,
+        "path": "RepoPromptHeadlessTests/Fixtures/CodeMapParity/Goldens/tsx_component.codemap.txt",
+        "sha256": "1c37575dce832d73d68f24670754510a934f7e5de737a72afc53343c92ff1e21"
+      },
+      {
+        "bytes": 2002,
+        "path": "RepoPromptHeadlessTests/PortableCodeMapParityTests.swift",
+        "sha256": "52196aa78a4a21d0f975f87faa2fda89291dce6d8ed51fde88e3fe1fc7b934ed"
+      },
+      {
+        "bytes": 17673,
+        "path": "RepoPromptHeadlessTests/PortableProEditArtifactTests.swift",
+        "sha256": "3fd5806bd91ab83fbe91a9af7a2c0d58391d4c10361253dc5e87afdf807e928e"
+      },
+      {
+        "bytes": 24821,
+        "path": "RepoPromptHeadlessTests/PortableProEditMaterializationTests.swift",
+        "sha256": "ff6bce6148846f91f89c654bc4d171317b13e8edc8c4107fa6c0747398e7b6d0"
+      },
+      {
+        "bytes": 29868,
+        "path": "RepoPromptHeadlessTests/PortableWorkspaceServiceTests.swift",
+        "sha256": "2fa6715ad080a247eb10dcaf8d4ec104a4349ee926d7403ea28ec7d85756ee49"
+      },
+      {
+        "bytes": 45756,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessCatalogOracleTests.swift",
+        "sha256": "22a0791e36cbb0d4f5597f61121b2444ee919557facf5d843e6c09d9d4a32edb"
+      },
+      {
+        "bytes": 11542,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessFileSearchSecurityTests.swift",
+        "sha256": "73aab49e98be07ade68d9051fe0bcc4b0f5a523d5fa1b212d4173e68cc1cf9cb"
+      },
+      {
+        "bytes": 18738,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessOracleProviderTests.swift",
+        "sha256": "d4719e4c73706f14d2d4ffb169d17650b85d2ffe7a793a28c8d77baf691a917c"
+      },
+      {
+        "bytes": 18718,
+        "path": "RepoPromptHeadlessTests/RepoPromptHeadlessWorkspaceContextBuilderTests.swift",
+        "sha256": "444565609f59a5c89809d9c815011b91e58acbac696105c346e1c6795aef1b85"
+      },
+      {
+        "bytes": 15790,
+        "path": "Scripts/classic_pixel_parity_capture.swift",
+        "sha256": "969aecd004da323afefc1a2d6bf540dea7725e508441f4a13fbef76056f2675c"
+      },
+      {
+        "bytes": 12833,
+        "path": "Scripts/classic_pixel_parity_metrics.py",
+        "sha256": "6246d97c0ffbdac6c784510e61929731f8bf73f139c23518c40126584aa8e0a5"
+      },
+      {
+        "bytes": 4522,
+        "path": "Scripts/fixtures/classic-pixel-parity/scenario.json",
+        "sha256": "8f9870ad97d8ca9f337bc2c340c4cd0112df3e2773ec3798b5fef6929f748f17"
+      },
+      {
+        "bytes": 341,
+        "path": "Scripts/requirements-classic-pixel-parity.txt",
+        "sha256": "647f5b2087fcc5375dc45a98e3bcbe1cefe1c169b5f7f534ea6a80e5d7acfbab"
+      },
+      {
+        "bytes": 27543,
+        "path": "Scripts/run_classic_pixel_parity.py",
+        "sha256": "b9d1e5cf765491a5b5e739fb45d35d8c63231adeb55943478c9b699e2becdf8c"
+      },
+      {
+        "bytes": 4210,
+        "path": "Scripts/smoke_linux_desktop.sh",
+        "sha256": "c140273b9c5e105cffcadec404e5ba7cd19fd6d841b8eac775cbb4c60d91d0e6"
+      },
+      {
+        "bytes": 5393,
+        "path": "Scripts/test_classic_pixel_parity_metrics.py",
+        "sha256": "2d10c762d78358bb3d7fa335bada33274e98d93a3b04f6e522c5718ddf176b16"
+      },
+      {
+        "bytes": 10073,
+        "path": "Scripts/verify_linux_desktop_graph.py",
+        "sha256": "e98161f312f6e2a4220d3041e0a7e289e644372c78a0e0e72c3b452b40ccd766"
+      },
+      {
+        "bytes": 985,
+        "path": "TreeSitterScannerSupport/include/tree_sitter/alloc.h",
+        "sha256": "b29c1c9fb7cc82f58c84b376df1297d6e2737a1d655fd356db0859e3c29c2fea"
+      },
+      {
+        "bytes": 10431,
+        "path": "TreeSitterScannerSupport/include/tree_sitter/array.h",
+        "sha256": "5bdf6ed1a78e3409fd443e085ca967a64c188a5d082aaf7f819bccd53a471c94"
+      },
+      {
+        "bytes": 7624,
+        "path": "TreeSitterScannerSupport/include/tree_sitter/parser.h",
+        "sha256": "180b893c8734778fd32f372dfbc27bd6ad1cd2221f26150b31256ff6716320d2"
+      },
+      {
+        "bytes": 10576,
+        "path": "TreeSitterScannerSupport/src/javascript/scanner.c",
+        "sha256": "b3d3f64284d97bf80749c026862427782cf7ecc0b7dc094e6698ab311c9a42c7"
+      },
+      {
+        "bytes": 15470,
+        "path": "TreeSitterScannerSupport/src/python/scanner.c",
+        "sha256": "6db82134ac2d4c90a1a1475487a625cface02662ebda9b7478cad9c7147e9afe"
+      },
+      {
+        "bytes": 8367,
+        "path": "docs/architecture/linux-desktop.md",
+        "sha256": "96751162b268a057650356ae310df637dc39e861190a0f7f8f426656166f2926"
+      },
+      {
+        "bytes": 20337,
+        "path": "docs/architecture/portable-oracle-mcp.md",
+        "sha256": "62e474a75103cfedfb5904d6224b845f88ed7a33e3160dc1ef421690d0abcd65"
+      },
+      {
+        "bytes": 1514829,
+        "path": "docs/visual-contracts/classic-parity-target-v1.png",
+        "sha256": "07ec2644bcbf4f3a9f4eec7aa56d53404d8cbd933b75f7f490e11a25339ba916"
+      },
+      {
+        "bytes": 48946,
+        "path": "prompt-exports/oracle-plan-2026-07-26-155226-chat-81a6.md",
+        "sha256": "bdd80d5e4e657734f2ca9a3e57ef444259b5655f4e4e5cbe15cc70b80c961ecd"
+      },
+      {
+        "bytes": 3702,
+        "path": "prompt-exports/oracle-review-2026-07-26-162552-classic-layout-slice-f0ba.md",
+        "sha256": "ae5d3f505dba260f9da1ac42920780098812e87b5a8e7b20a3b35070de299bed"
+      },
+      {
+        "bytes": 2078,
+        "path": "script/build_and_run.sh",
+        "sha256": "d3c3d0e0e77f5fa6cd466ba6a234d6d23d923e9eda605bb0c846d39309441e57"
+      }
+    ],
+    "sha256": "558e8533ed93cce9931db8d4429a4aec7ba6a0b3d11aa690010a7502b3a8fbd8"
+  }
+}

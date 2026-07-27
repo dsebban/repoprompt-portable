@@ -1,0 +1,18 @@
+[0/1] Planning build
+Building for production...
+[0/149] Write sources
+[2/150] Write swift-version--58304C5D6DBC2206.txt
+[4/6] Compiling RepoPromptHeadless HeadlessExitCode.swift
+[5/7] Compiling RepoPromptLinuxDesktopKit DesktopArguments.swift
+[6/8] Compiling RepoPromptLinuxDesktop RepoPromptLinuxDesktopApp.swift
+[6/8] Write Objects.LinkFileList
+[7/8] Linking repoprompt-linux-desktop
+Build of product 'repoprompt-linux-desktop' complete! (35.20s)
+warning: you may be able to install gtk+-3.0 using your system-packager:
+    brew install gtk+3
+warning: you may be able to install gtk4 using your system-packager:
+    brew install gtk4
+warning: you may be able to install gtk+-3.0 using your system-packager:
+    brew install gtk+3
+warning: you may be able to install gtk4 using your system-packager:
+    brew install gtk4

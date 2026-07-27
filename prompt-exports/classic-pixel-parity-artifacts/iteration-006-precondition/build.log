@@ -1,0 +1,26 @@
+[0/1] Planning build
+Building for production...
+[0/5] Write sources
+[3/6] Write swift-version--58304C5D6DBC2206.txt
+[5/6] Compiling RepoPromptCore AgentModeMCPToolAdvertisementPolicy.swift
+/Users/danielsivan/dev/repoprompt-portable/RepoPromptCore/Sessions/WorkspaceSessionStore.swift:11:12: warning: no 'async' operations occur within 'await' expression
+ 9 | 	@discardableResult
+10 | 	public func upsert(_ session: RepoPromptSession, activate: Bool = false) async -> UUID {
+11 | 		let id = await session.id
+   |            `- warning: no 'async' operations occur within 'await' expression
+12 | 		sessions[id] = session
+13 | 		if activate || activeSessionID == nil {
+[6/7] Compiling RepoPromptHeadless HeadlessExitCode.swift
+[7/8] Compiling RepoPromptLinuxDesktopKit DesktopArguments.swift
+[8/10] Compiling RepoPromptLinuxDesktop RepoPromptLinuxDesktopApp.swift
+[8/10] Write Objects.LinkFileList
+[9/10] Linking repoprompt-linux-desktop
+Build of product 'repoprompt-linux-desktop' complete! (44.69s)
+warning: you may be able to install gtk+-3.0 using your system-packager:
+    brew install gtk+3
+warning: you may be able to install gtk4 using your system-packager:
+    brew install gtk4
+warning: you may be able to install gtk+-3.0 using your system-packager:
+    brew install gtk+3
+warning: you may be able to install gtk4 using your system-packager:
+    brew install gtk4

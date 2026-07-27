@@ -1,0 +1,12 @@
+[0/1] Planning build
+Building for production...
+[0/2] Write swift-version--58304C5D6DBC2206.txt
+Build of product 'repoprompt-linux-desktop' complete! (19.13s)
+warning: you may be able to install gtk+-3.0 using your system-packager:
+    brew install gtk+3
+warning: you may be able to install gtk4 using your system-packager:
+    brew install gtk4
+warning: you may be able to install gtk+-3.0 using your system-packager:
+    brew install gtk+3
+warning: you may be able to install gtk4 using your system-packager:
+    brew install gtk4
